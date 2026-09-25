@@ -1,0 +1,16 @@
+# dependencies
+/node_modules
+
+# production output
+/dist
+
+# environment variables
+.env
+*.env
+
+# logs
+*.log
+
+# vitest / coverage
+/coverage
+*.tsbuildinfo
