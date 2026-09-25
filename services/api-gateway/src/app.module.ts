@@ -1,6 +1,7 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { HealthController } from './health/health.controller.js';
+import { AuthModule } from './auth/auth.module.js';
 import { RequestLoggerMiddleware } from './common/middleware/logger.middleware.js';
 
 @Module({
@@ -9,6 +10,7 @@ import { RequestLoggerMiddleware } from './common/middleware/logger.middleware.j
       isGlobal: true,
       envFilePath: '.env',
     }),
+    AuthModule,
   ],
   controllers: [HealthController],
   providers: [],
