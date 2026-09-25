@@ -42,6 +42,7 @@ async function bootstrap() {
     .setTitle('AIPMS API Gateway')
     .setDescription('API Gateway for AIPMS microservices architecture')
     .setVersion('1.0.0')
+    .addBearerAuth()
     .build();
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);
