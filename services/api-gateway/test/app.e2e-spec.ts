@@ -204,4 +204,184 @@ describe('API Gateway (e2e)', () => {
       expect(response.body.message).toContain('Auth service is currently unavailable');
     });
   });
+
+  // ─── Microservices Forwarding Integration Tests ──────────────────────────────
+
+  describe('Project Service Routing (/api/projects)', () => {
+    it('should forward GET /api/projects with Authorization header', async () => {
+      const mockProjects = [{ id: 'proj-1', name: 'Project Alpha' }];
+
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response(JSON.stringify(mockProjects), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+
+      const response = await request(app.getHttpServer())
+        .get('/api/projects')
+        .set('Authorization', 'Bearer bearer-token')
+        .expect(200);
+
+      expect(response.body).toEqual(mockProjects);
+      expect(fetch).toHaveBeenCalledWith(
+        'http://localhost:3002/api/projects',
+        expect.objectContaining({
+          method: 'GET',
+          headers: expect.objectContaining({
+            authorization: 'Bearer bearer-token',
+          }),
+        }),
+      );
+    });
+
+    it('should handle Project Service unavailability cleanly with 503', async () => {
+      vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new TypeError('fetch failed'));
+
+      const response = await request(app.getHttpServer())
+        .get('/api/projects')
+        .expect(503);
+
+      expect(response.body.statusCode).toBe(503);
+      expect(response.body.message).toContain('Project service is currently unavailable');
+    });
+  });
+
+  describe('Team Service Routing (/api/teams)', () => {
+    it('should forward GET /api/teams with Authorization header', async () => {
+      const mockTeams = [{ id: 'team-1', name: 'Dev Team' }];
+
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response(JSON.stringify(mockTeams), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+
+      const response = await request(app.getHttpServer())
+        .get('/api/teams')
+        .set('Authorization', 'Bearer bearer-token')
+        .expect(200);
+
+      expect(response.body).toEqual(mockTeams);
+      expect(fetch).toHaveBeenCalledWith(
+        'http://localhost:3003/api/teams',
+        expect.objectContaining({
+          method: 'GET',
+          headers: expect.objectContaining({
+            authorization: 'Bearer bearer-token',
+          }),
+        }),
+      );
+    });
+
+    it('should propagate downstream 404 error from Team Service', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response(JSON.stringify({ statusCode: 404, message: 'Team not found' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+
+      const response = await request(app.getHttpServer())
+        .get('/api/teams/invalid-id')
+        .expect(404);
+
+      expect(response.body.statusCode).toBe(404);
+    });
+  });
+
+  describe('Task Service Routing (/api/tasks)', () => {
+    it('should forward POST /api/tasks with body and Authorization header', async () => {
+      const mockTask = { id: 'task-1', title: 'Task 1', status: 'TODO' };
+
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response(JSON.stringify(mockTask), {
+          status: 201,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+
+      const response = await request(app.getHttpServer())
+        .post('/api/tasks')
+        .set('Authorization', 'Bearer bearer-token')
+        .send({ title: 'Task 1', projectId: 'p-1' })
+        .expect(201);
+
+      expect(response.body).toEqual(mockTask);
+    });
+
+    it('should handle Task Service timeout with 504 Gateway Timeout', async () => {
+      const timeoutError = new Error('The operation was aborted');
+      timeoutError.name = 'TimeoutError';
+      vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(timeoutError);
+
+      const response = await request(app.getHttpServer())
+        .get('/api/tasks')
+        .expect(504);
+
+      expect(response.body.statusCode).toBe(504);
+      expect(response.body.message).toContain('Task service request timed out');
+    });
+  });
+
+  describe('Sprint Service Routing (/api/sprints)', () => {
+    it('should forward GET /api/sprints with Authorization header', async () => {
+      const mockSprints = [{ id: 'sprint-1', name: 'Sprint 1' }];
+
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response(JSON.stringify(mockSprints), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+
+      const response = await request(app.getHttpServer())
+        .get('/api/sprints')
+        .set('Authorization', 'Bearer bearer-token')
+        .expect(200);
+
+      expect(response.body).toEqual(mockSprints);
+    });
+  });
+
+  describe('Risk Service Routing (/api/risks)', () => {
+    it('should forward GET /api/risks with Authorization header', async () => {
+      const mockRisks = [{ id: 'risk-1', title: 'Risk 1' }];
+
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response(JSON.stringify(mockRisks), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+
+      const response = await request(app.getHttpServer())
+        .get('/api/risks')
+        .set('Authorization', 'Bearer bearer-token')
+        .expect(200);
+
+      expect(response.body).toEqual(mockRisks);
+    });
+  });
+
+  describe('Reporting Service Routing (/api/reports)', () => {
+    it('should forward GET /api/reports/projects/:id/overview with Authorization header', async () => {
+      const mockOverview = { projectId: 'p-1', tasks: { totalTasks: 5 } };
+
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response(JSON.stringify(mockOverview), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+
+      const response = await request(app.getHttpServer())
+        .get('/api/reports/projects/p-1/overview')
+        .set('Authorization', 'Bearer bearer-token')
+        .expect(200);
+
+      expect(response.body).toEqual(mockOverview);
+    });
+  });
 });
