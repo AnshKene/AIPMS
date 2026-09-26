@@ -1,0 +1,47 @@
+name: Risk Service CI
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - 'services/risk-service/**'
+      - '.github/workflows/risk-service-ci.yml'
+
+  push:
+    branches:
+      - develop
+    paths:
+      - 'services/risk-service/**'
+      - '.github/workflows/risk-service-ci.yml'
+
+jobs:
+  risk-service:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: services/risk-service
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: services/risk-service/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Unit tests
+        run: npm run test
+
+      - name: E2E tests
+        run: npm run test:e2e
