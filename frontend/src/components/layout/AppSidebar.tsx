@@ -18,6 +18,7 @@ import {
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { useAuth } from '@/lib/auth/auth-context';
 
 export interface NavItem {
   title: string;
@@ -37,6 +38,7 @@ export const navItems: NavItem[] = [
 
 export function AppSidebar({ className }: { className?: string }) {
   const pathname = usePathname();
+  const { user, isAuthenticated } = useAuth();
 
   return (
     <aside
@@ -90,8 +92,8 @@ export function AppSidebar({ className }: { className?: string }) {
                   className={cn(
                     'h-4 w-4 transition-colors',
                     isActive
-                      ? 'text-blue-600'
-                      : 'text-slate-400 group-hover:text-slate-600',
+                  ? 'text-blue-600'
+                  : 'text-slate-400 group-hover:text-slate-600',
                   )}
                 />
                 <span>{item.title}</span>
@@ -106,18 +108,18 @@ export function AppSidebar({ className }: { className?: string }) {
 
       <Separator />
 
-      {/* User / Auth Placeholder Card */}
+      {/* User / Auth Info Card */}
       <div className="p-4">
         <div className="flex items-center gap-3 rounded-lg border border-slate-100 bg-slate-50/70 p-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-200 text-slate-600 font-semibold text-xs">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-blue-700 font-semibold text-xs">
             <UserCheck className="h-4 w-4" />
           </div>
           <div className="flex flex-col min-w-0">
             <span className="truncate text-xs font-semibold text-slate-800">
-              Demo Architect
+              {isAuthenticated && user ? user.name : 'Guest User'}
             </span>
             <span className="truncate text-[10px] text-slate-500">
-              developer@aipms.local
+              {isAuthenticated && user ? user.email : 'Not signed in'}
             </span>
           </div>
         </div>

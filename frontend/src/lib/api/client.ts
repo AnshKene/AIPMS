@@ -3,11 +3,14 @@
  * Single entry point communicating exclusively with the API Gateway.
  */
 
+import { authStorage } from '@/lib/auth/auth-storage';
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
 
 export interface RequestOptions extends RequestInit {
   params?: Record<string, string | number | boolean | undefined>;
+  token?: string | null;
 }
 
 export class ApiError extends Error {
@@ -21,11 +24,27 @@ export class ApiError extends Error {
   }
 }
 
+function parseErrorMessage(data: unknown, fallback: string): string {
+  if (data && typeof data === 'object') {
+    const errObj = data as Record<string, unknown>;
+    if (typeof errObj.message === 'string' && errObj.message.trim().length > 0) {
+      return errObj.message;
+    }
+    if (Array.isArray(errObj.message) && errObj.message.length > 0) {
+      return errObj.message.join(', ');
+    }
+    if (typeof errObj.error === 'string' && errObj.error.trim().length > 0) {
+      return errObj.error;
+    }
+  }
+  return fallback;
+}
+
 async function request<T = unknown>(
   endpoint: string,
   options: RequestOptions = {},
 ): Promise<T> {
-  const { params, headers, ...customConfig } = options;
+  const { params, headers, token, ...customConfig } = options;
 
   let url = `${API_BASE_URL.replace(/\/+$/, '')}/${endpoint.replace(/^\/+/, '')}`;
 
@@ -42,12 +61,31 @@ async function request<T = unknown>(
     }
   }
 
+  // Build headers with bearer token support
+  const requestHeaders = new Headers(headers);
+
+  if (!requestHeaders.has('Content-Type')) {
+    requestHeaders.set('Content-Type', 'application/json');
+  }
+
+  // Handle Authorization header
+  if (token !== undefined) {
+    if (token) {
+      requestHeaders.set('Authorization', `Bearer ${token}`);
+    } else {
+      requestHeaders.delete('Authorization');
+    }
+  } else if (!requestHeaders.has('Authorization') && !requestHeaders.has('authorization')) {
+    // Automatically attach stored token if available in browser context
+    const storedToken = authStorage.getToken();
+    if (storedToken) {
+      requestHeaders.set('Authorization', `Bearer ${storedToken}`);
+    }
+  }
+
   const config: RequestInit = {
     method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      ...headers,
-    },
+    headers: requestHeaders,
     ...customConfig,
   };
 
@@ -64,11 +102,8 @@ async function request<T = unknown>(
     }
 
     if (!response.ok) {
-      throw new ApiError(
-        response.status,
-        data,
-        (data as { message?: string })?.message || response.statusText,
-      );
+      const message = parseErrorMessage(data, response.statusText);
+      throw new ApiError(response.status, data, message);
     }
 
     return data as T;
