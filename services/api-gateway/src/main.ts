@@ -30,11 +30,12 @@ async function bootstrap() {
   const corsOriginEnv = configService.get<string>('CORS_ORIGIN');
   const allowedOrigins = corsOriginEnv
     ? corsOriginEnv.split(',').map((origin) => origin.trim())
-    : ['http://localhost:3000', 'http://localhost:3001'];
+    : ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3008'];
 
   app.enableCors({
     origin: allowedOrigins,
-    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
   // Swagger Documentation Setup
