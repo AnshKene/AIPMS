@@ -197,7 +197,7 @@ describe('ProjectsService', () => {
   });
 
   describe('archive', () => {
-    it('should archive a project by setting status to ARCHIVED', async () => {
+    it('should archive a project by setting status to ARCHIVED and previous_status to current status', async () => {
       const existingProject = {
         id: validUuid,
         name: 'AIPMS',
@@ -208,6 +208,7 @@ describe('ProjectsService', () => {
       const archivedProject = {
         ...existingProject,
         status: 'ARCHIVED',
+        previous_status: 'PLANNING',
       };
 
       vi.spyOn(service, 'findOne').mockResolvedValue(service['formatProject'](existingProject) as any);
@@ -223,6 +224,139 @@ describe('ProjectsService', () => {
 
       const result = await service.archive(validUuid);
       expect(result.status).toBe('ARCHIVED');
+      expect(result.previousStatus).toBe('PLANNING');
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'ARCHIVED',
+          previous_status: 'PLANNING',
+        }),
+      );
+    });
+
+    it('should preserve existing previous_status when archiving an already ARCHIVED project', async () => {
+      const existingArchivedProject = {
+        id: validUuid,
+        name: 'AIPMS',
+        status: 'ARCHIVED',
+        previous_status: 'PLANNING',
+        owner_id: ownerUuid,
+      };
+
+      vi.spyOn(service, 'findOne').mockResolvedValue(service['formatProject'](existingArchivedProject) as any);
+
+      const mockSingle = vi.fn().mockResolvedValue({ data: existingArchivedProject, error: null });
+      const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+      const mockEq = vi.fn().mockReturnValue({ select: mockSelect });
+      const mockUpdate = vi.fn().mockReturnValue({ eq: mockEq });
+
+      (service as any).supabase = {
+        from: vi.fn().mockReturnValue({ update: mockUpdate }),
+      };
+
+      await service.archive(validUuid);
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.not.objectContaining({
+          previous_status: 'ARCHIVED',
+        }),
+      );
+    });
+  });
+
+  describe('unarchive', () => {
+    it.each([
+      ['PLANNING', ProjectStatus.PLANNING],
+      ['ACTIVE', ProjectStatus.ACTIVE],
+      ['ON_HOLD', ProjectStatus.ON_HOLD],
+      ['COMPLETED', ProjectStatus.COMPLETED],
+    ])('should restore status to %s when unarchiving', async (statusName, statusEnum) => {
+      const archivedProject = {
+        id: validUuid,
+        name: 'AIPMS',
+        status: 'ARCHIVED',
+        previous_status: statusEnum,
+        owner_id: ownerUuid,
+      };
+
+      const restoredProject = {
+        ...archivedProject,
+        status: statusEnum,
+        previous_status: null,
+      };
+
+      vi.spyOn(service, 'findOne').mockResolvedValue(service['formatProject'](archivedProject) as any);
+
+      const mockSingle = vi.fn().mockResolvedValue({ data: restoredProject, error: null });
+      const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+      const mockEq = vi.fn().mockReturnValue({ select: mockSelect });
+      const mockUpdate = vi.fn().mockReturnValue({ eq: mockEq });
+
+      (service as any).supabase = {
+        from: vi.fn().mockReturnValue({ update: mockUpdate }),
+      };
+
+      const result = await service.unarchive(validUuid);
+      expect(result.status).toBe(statusEnum);
+      expect(result.previousStatus).toBeNull();
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: statusEnum,
+          previous_status: null,
+        }),
+      );
+    });
+
+    it('should fall back to ACTIVE when unarchiving legacy project with NULL previous_status', async () => {
+      const legacyArchivedProject = {
+        id: validUuid,
+        name: 'AIPMS Legacy',
+        status: 'ARCHIVED',
+        previous_status: null,
+        owner_id: ownerUuid,
+      };
+
+      const restoredProject = {
+        ...legacyArchivedProject,
+        status: 'ACTIVE',
+        previous_status: null,
+      };
+
+      vi.spyOn(service, 'findOne').mockResolvedValue(service['formatProject'](legacyArchivedProject) as any);
+
+      const mockSingle = vi.fn().mockResolvedValue({ data: restoredProject, error: null });
+      const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+      const mockEq = vi.fn().mockReturnValue({ select: mockSelect });
+      const mockUpdate = vi.fn().mockReturnValue({ eq: mockEq });
+
+      (service as any).supabase = {
+        from: vi.fn().mockReturnValue({ update: mockUpdate }),
+      };
+
+      const result = await service.unarchive(validUuid);
+      expect(result.status).toBe('ACTIVE');
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'ACTIVE',
+          previous_status: null,
+        }),
+      );
+    });
+
+    it.each([
+      ['PLANNING', ProjectStatus.PLANNING],
+      ['ACTIVE', ProjectStatus.ACTIVE],
+      ['ON_HOLD', ProjectStatus.ON_HOLD],
+      ['COMPLETED', ProjectStatus.COMPLETED],
+    ])('should throw BadRequestException when trying to unarchive a non-archived %s project', async (_, statusEnum) => {
+      const nonArchivedProject = {
+        id: validUuid,
+        name: 'Active Project',
+        status: statusEnum,
+        owner_id: ownerUuid,
+      };
+
+      vi.spyOn(service, 'findOne').mockResolvedValue(service['formatProject'](nonArchivedProject) as any);
+
+      await expect(service.unarchive(validUuid)).rejects.toThrow(BadRequestException);
     });
   });
 });

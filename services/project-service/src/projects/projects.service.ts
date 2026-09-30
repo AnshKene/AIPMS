@@ -182,24 +182,98 @@ export class ProjectsService {
   async archive(id: string, authHeader?: string) {
     this.validateUuid(id);
 
-    await this.findOne(id, authHeader);
+    const existing = await this.findOne(id, authHeader);
 
-    const updateData = {
+    const updateData: Record<string, any> = {
       status: ProjectStatus.ARCHIVED,
       updated_at: new Date().toISOString(),
     };
 
+    // If project is not already ARCHIVED, store current status as previous_status.
+    // If project is already ARCHIVED, preserve existing previous_status.
+    if (existing.status !== ProjectStatus.ARCHIVED) {
+      updateData.previous_status = existing.status;
+    }
+
     const client = this.getSupabaseClient(authHeader);
-    const { data, error } = await client
+    let { data, error } = await client
       .from('projects')
       .update(updateData)
       .eq('id', id)
       .select()
       .single();
 
+    // Fallback if previous_status column is missing from Supabase schema cache
+    if (error && error.message?.includes('previous_status')) {
+      this.logger.warn(
+        `Supabase schema cache missing 'previous_status' column. Please execute in Supabase SQL Editor: ALTER TABLE projects ADD COLUMN IF NOT EXISTS previous_status VARCHAR(50); NOTIFY pgrst, 'reload schema';`,
+      );
+      delete updateData.previous_status;
+      const retryResult = await client
+        .from('projects')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single();
+      data = retryResult.data;
+      error = retryResult.error;
+    }
+
     if (error || !data) {
       this.logger.error(`Failed to archive project ${id}: ${error?.message}`);
       throw new BadRequestException(error?.message || 'Failed to archive project');
+    }
+
+    return this.formatProject(data);
+  }
+
+  async unarchive(id: string, authHeader?: string) {
+    this.validateUuid(id);
+
+    const existing = await this.findOne(id, authHeader);
+
+    if (existing.status !== ProjectStatus.ARCHIVED) {
+      throw new BadRequestException(
+        `Project with ID '${id}' is not archived and cannot be unarchived`,
+      );
+    }
+
+    // Restore previousStatus if set; fall back to ACTIVE for legacy archived projects without previous_status
+    const restoredStatus = existing.previousStatus || ProjectStatus.ACTIVE;
+
+    const updateData: Record<string, any> = {
+      status: restoredStatus,
+      previous_status: null,
+      updated_at: new Date().toISOString(),
+    };
+
+    const client = this.getSupabaseClient(authHeader);
+    let { data, error } = await client
+      .from('projects')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    // Fallback if previous_status column is missing from Supabase schema cache
+    if (error && error.message?.includes('previous_status')) {
+      this.logger.warn(
+        `Supabase schema cache missing 'previous_status' column. Falling back to status update.`,
+      );
+      delete updateData.previous_status;
+      const retryResult = await client
+        .from('projects')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single();
+      data = retryResult.data;
+      error = retryResult.error;
+    }
+
+    if (error || !data) {
+      this.logger.error(`Failed to unarchive project ${id}: ${error?.message}`);
+      throw new BadRequestException(error?.message || 'Failed to unarchive project');
     }
 
     return this.formatProject(data);
@@ -232,6 +306,7 @@ export class ProjectsService {
       name: row.name,
       description: row.description ?? null,
       status: row.status,
+      previousStatus: row.previous_status ?? null,
       startDate: row.start_date ?? null,
       endDate: row.end_date ?? null,
       ownerId: row.owner_id,

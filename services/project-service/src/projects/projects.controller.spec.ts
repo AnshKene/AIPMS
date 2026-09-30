@@ -14,6 +14,7 @@ describe('ProjectsController', () => {
     findOne: vi.fn(),
     update: vi.fn(),
     archive: vi.fn(),
+    unarchive: vi.fn(),
   };
 
   const validUuid = 'd0a1b2c3-4567-49ab-a123-0123456789ab';
@@ -89,6 +90,15 @@ describe('ProjectsController', () => {
 
     const result = await controller.archive(validUuid);
     expect(service.archive).toHaveBeenCalledWith(validUuid);
+    expect(result).toEqual(expected);
+  });
+
+  it('should call projectsService.unarchive', async () => {
+    const expected = { id: validUuid, status: 'ACTIVE' };
+    mockProjectsService.unarchive.mockResolvedValue(expected);
+
+    const result = await controller.unarchive(validUuid);
+    expect(service.unarchive).toHaveBeenCalledWith(validUuid);
     expect(result).toEqual(expected);
   });
 });

@@ -8,8 +8,16 @@ CREATE TABLE IF NOT EXISTS projects (
   start_date TIMESTAMPTZ,
   end_date TIMESTAMPTZ,
   owner_id UUID NOT NULL,
+  previous_status VARCHAR(50) CHECK (previous_status IS NULL OR previous_status IN ('PLANNING', 'ACTIVE', 'ON_HOLD', 'COMPLETED')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE projects
+ADD COLUMN IF NOT EXISTS previous_status VARCHAR(50)
+CHECK (
+  previous_status IS NULL OR
+  previous_status IN ('PLANNING', 'ACTIVE', 'ON_HOLD', 'COMPLETED')
 );
 
 -- Indexes for common filter operations

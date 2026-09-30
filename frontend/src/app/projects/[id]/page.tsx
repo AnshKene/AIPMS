@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   Pencil,
   Archive,
+  ArchiveRestore,
   FolderKanban,
   CalendarDays,
   User,
@@ -23,6 +24,7 @@ import {
   getProject,
   updateProject,
   archiveProject,
+  unarchiveProject,
   type Project,
   type UpdateProjectPayload,
 } from '@/lib/api/projects';
@@ -136,6 +138,85 @@ function ArchiveButton({
         >
           {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
           Confirm Archive
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={loading}
+          onClick={() => {
+            setConfirming(false);
+            setError(null);
+          }}
+        >
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Unarchive Button ────────────────────────────────────────────────────────
+
+function UnarchiveButton({
+  projectId,
+  projectName,
+  onUnarchived,
+}: {
+  projectId: string;
+  projectName: string;
+  onUnarchived: (project: Project) => void;
+}) {
+  const [confirming, setConfirming] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function handleUnarchive() {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await unarchiveProject(projectId);
+      onUnarchived(result);
+      setConfirming(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to unarchive project.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (!confirming) {
+    return (
+      <Button
+        id="unarchive-project-btn"
+        variant="outline"
+        size="sm"
+        onClick={() => setConfirming(true)}
+        className="gap-1.5 border-blue-300 text-blue-700 hover:bg-blue-50"
+      >
+        <ArchiveRestore className="h-4 w-4" />
+        Unarchive
+      </Button>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-xs text-slate-600">
+        Unarchive <span className="font-semibold">&ldquo;{projectName}&rdquo;</span>? This will restore its
+        previous status.
+      </p>
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      <div className="flex gap-2">
+        <Button
+          id="unarchive-confirm-btn"
+          size="sm"
+          variant="default"
+          disabled={loading}
+          onClick={handleUnarchive}
+          className="gap-1.5"
+        >
+          {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          Confirm Unarchive
         </Button>
         <Button
           size="sm"
@@ -329,15 +410,11 @@ export default function ProjectDetailPage() {
             )}
 
             {isArchived && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1.5 text-slate-400 border-slate-200 cursor-default"
-                disabled
-              >
-                <Archive className="h-3.5 w-3.5" />
-                Archived
-              </Button>
+              <UnarchiveButton
+                projectId={project.id}
+                projectName={project.name}
+                onUnarchived={handleArchived}
+              />
             )}
           </div>
         </div>
@@ -385,7 +462,7 @@ export default function ProjectDetailPage() {
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex items-center gap-3">
             <Archive className="h-4 w-4 text-amber-500 shrink-0" />
             <p className="text-sm text-amber-700">
-              This project is archived. It is read-only and will not appear in active filters.
+              This project is archived. Unarchive it to restore its previous status.
             </p>
           </div>
         )}

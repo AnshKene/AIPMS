@@ -85,6 +85,22 @@ export class ProjectsController {
       : this.projectsService.findOne(id);
   }
 
+  @Patch(':id/unarchive')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Unarchive a project (sets status to ACTIVE)' })
+  @ApiParam({ name: 'id', description: 'Project UUID' })
+  @ApiResponse({ status: 200, description: 'Project unarchived successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid UUID format or project is not archived' })
+  @ApiResponse({ status: 404, description: 'Project not found' })
+  async unarchive(
+    @Param('id') id: string,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return authHeader
+      ? this.projectsService.unarchive(id, authHeader)
+      : this.projectsService.unarchive(id);
+  }
+
   @Patch(':id')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Update a project by ID' })

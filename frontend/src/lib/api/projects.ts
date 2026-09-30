@@ -94,3 +94,7 @@ export async function updateProject(id: string, payload: UpdateProjectPayload): 
 export async function archiveProject(id: string): Promise<Project> {
   return apiClient.delete<Project>(`projects/${id}`);
 }
+
+export async function unarchiveProject(id: string): Promise<Project> {
+  return apiClient.patch<Project>(`projects/${id}/unarchive`);
+}
