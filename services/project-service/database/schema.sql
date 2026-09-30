@@ -15,3 +15,29 @@ CREATE TABLE IF NOT EXISTS projects (
 -- Indexes for common filter operations
 CREATE INDEX IF NOT EXISTS idx_projects_owner_id ON projects(owner_id);
 CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
+
+-- Enable Row Level Security
+ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies
+CREATE POLICY "Enable read access for authenticated users"
+ON projects FOR SELECT
+TO authenticated
+USING (true);
+
+CREATE POLICY "Enable insert for authenticated users matching owner_id"
+ON projects FOR INSERT
+TO authenticated
+WITH CHECK (auth.uid() = owner_id);
+
+CREATE POLICY "Enable update for users matching owner_id"
+ON projects FOR UPDATE
+TO authenticated
+USING (auth.uid() = owner_id)
+WITH CHECK (auth.uid() = owner_id);
+
+CREATE POLICY "Enable delete for users matching owner_id"
+ON projects FOR DELETE
+TO authenticated
+USING (auth.uid() = owner_id);
+

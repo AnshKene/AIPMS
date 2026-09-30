@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Headers,
   HttpCode,
   HttpStatus,
   Param,
@@ -43,8 +44,13 @@ export class ProjectsController {
     },
   })
   @ApiResponse({ status: 400, description: 'Bad Request / Validation Error' })
-  async create(@Body() createProjectDto: CreateProjectDto) {
-    return this.projectsService.create(createProjectDto);
+  async create(
+    @Body() createProjectDto: CreateProjectDto,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return authHeader
+      ? this.projectsService.create(createProjectDto, authHeader)
+      : this.projectsService.create(createProjectDto);
   }
 
   @Get()
@@ -54,8 +60,13 @@ export class ProjectsController {
     status: 200,
     description: 'Projects listed successfully',
   })
-  async findAll(@Query() query: QueryProjectDto) {
-    return this.projectsService.findAll(query);
+  async findAll(
+    @Query() query: QueryProjectDto,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return authHeader
+      ? this.projectsService.findAll(query, authHeader)
+      : this.projectsService.findAll(query);
   }
 
   @Get(':id')
@@ -65,8 +76,13 @@ export class ProjectsController {
   @ApiResponse({ status: 200, description: 'Project found' })
   @ApiResponse({ status: 400, description: 'Invalid UUID format' })
   @ApiResponse({ status: 404, description: 'Project not found' })
-  async findOne(@Param('id') id: string) {
-    return this.projectsService.findOne(id);
+  async findOne(
+    @Param('id') id: string,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return authHeader
+      ? this.projectsService.findOne(id, authHeader)
+      : this.projectsService.findOne(id);
   }
 
   @Patch(':id')
@@ -79,8 +95,11 @@ export class ProjectsController {
   async update(
     @Param('id') id: string,
     @Body() updateProjectDto: UpdateProjectDto,
+    @Headers('authorization') authHeader?: string,
   ) {
-    return this.projectsService.update(id, updateProjectDto);
+    return authHeader
+      ? this.projectsService.update(id, updateProjectDto, authHeader)
+      : this.projectsService.update(id, updateProjectDto);
   }
 
   @Delete(':id')
@@ -90,7 +109,12 @@ export class ProjectsController {
   @ApiResponse({ status: 200, description: 'Project archived successfully' })
   @ApiResponse({ status: 400, description: 'Invalid UUID format' })
   @ApiResponse({ status: 404, description: 'Project not found' })
-  async archive(@Param('id') id: string) {
-    return this.projectsService.archive(id);
+  async archive(
+    @Param('id') id: string,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return authHeader
+      ? this.projectsService.archive(id, authHeader)
+      : this.projectsService.archive(id);
   }
 }

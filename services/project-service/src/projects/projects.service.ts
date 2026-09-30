@@ -30,7 +30,26 @@ export class ProjectsService {
     });
   }
 
-  async create(dto: CreateProjectDto) {
+  private getSupabaseClient(authHeader?: string): SupabaseClient {
+    if (authHeader && authHeader.trim().length > 0) {
+      const url = this.configService.get<string>('supabase.url') ?? '';
+      const anonKey = this.configService.get<string>('supabase.anonKey') ?? '';
+      return createClient(url, anonKey, {
+        global: {
+          headers: {
+            Authorization: authHeader,
+          },
+        },
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      });
+    }
+    return this.supabase;
+  }
+
+  async create(dto: CreateProjectDto, authHeader?: string) {
     this.validateDates(dto.startDate, dto.endDate);
 
     const newProject = {
@@ -42,7 +61,9 @@ export class ProjectsService {
       owner_id: dto.ownerId,
     };
 
-    const { data, error } = await this.supabase
+    const client = this.getSupabaseClient(authHeader);
+
+    const { data, error } = await client
       .from('projects')
       .insert([newProject])
       .select()
@@ -56,12 +77,13 @@ export class ProjectsService {
     return this.formatProject(data);
   }
 
-  async findAll(query: QueryProjectDto) {
+  async findAll(query: QueryProjectDto, authHeader?: string) {
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.max(1, Math.min(100, query.limit ?? 20));
     const offset = (page - 1) * limit;
 
-    let supabaseQuery = this.supabase
+    const client = this.getSupabaseClient(authHeader);
+    let supabaseQuery = client
       .from('projects')
       .select('*', { count: 'exact' });
 
@@ -96,10 +118,11 @@ export class ProjectsService {
     };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, authHeader?: string) {
     this.validateUuid(id);
 
-    const { data, error } = await this.supabase
+    const client = this.getSupabaseClient(authHeader);
+    const { data, error } = await client
       .from('projects')
       .select('*')
       .eq('id', id)
@@ -117,10 +140,10 @@ export class ProjectsService {
     return this.formatProject(data);
   }
 
-  async update(id: string, dto: UpdateProjectDto) {
+  async update(id: string, dto: UpdateProjectDto, authHeader?: string) {
     this.validateUuid(id);
 
-    const existing = await this.findOne(id);
+    const existing = await this.findOne(id, authHeader);
     if (!existing) {
       throw new NotFoundException(`Project with ID '${id}' not found`);
     }
@@ -140,7 +163,8 @@ export class ProjectsService {
     if (dto.startDate !== undefined) updateData.start_date = dto.startDate;
     if (dto.endDate !== undefined) updateData.end_date = dto.endDate;
 
-    const { data, error } = await this.supabase
+    const client = this.getSupabaseClient(authHeader);
+    const { data, error } = await client
       .from('projects')
       .update(updateData)
       .eq('id', id)
@@ -155,17 +179,18 @@ export class ProjectsService {
     return this.formatProject(data);
   }
 
-  async archive(id: string) {
+  async archive(id: string, authHeader?: string) {
     this.validateUuid(id);
 
-    await this.findOne(id);
+    await this.findOne(id, authHeader);
 
     const updateData = {
       status: ProjectStatus.ARCHIVED,
       updated_at: new Date().toISOString(),
     };
 
-    const { data, error } = await this.supabase
+    const client = this.getSupabaseClient(authHeader);
+    const { data, error } = await client
       .from('projects')
       .update(updateData)
       .eq('id', id)
