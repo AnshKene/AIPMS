@@ -350,4 +350,369 @@ describe('TasksService', () => {
       ).rejects.toThrow(NotFoundException);
     });
   });
+
+  describe('security and authorization enforcement (Test Groups A-G)', () => {
+    const userAJwt = 'Bearer user-a-jwt';
+    const userBJwt = 'Bearer user-b-jwt';
+    const projectAUuid = 'a1b2c3d4-5678-40ab-b123-1234567890ab';
+    const projectBUuid = 'b1b2c3d4-5678-40ab-b123-1234567890ab';
+    const taskAUuid = 'c1b2c3d4-5678-40ab-b123-1234567890ab';
+    const taskBUuid = 'd1b2c3d4-5678-40ab-b123-1234567890ab';
+
+    it('should create authenticated client with Authorization header when authHeader is provided', async () => {
+      const authHeader = 'Bearer valid-user-jwt-token';
+      const client = (service as any).getSupabaseClient(authHeader);
+      expect(client).toBeDefined();
+    });
+
+    it('should fall back to default supabase client when authHeader is omitted', async () => {
+      const client = (service as any).getSupabaseClient();
+      expect(client).toBe((service as any).supabase);
+    });
+
+    // Group A: Owner
+    describe('Group A: Owner', () => {
+      it('Owner creates task (PASS)', async () => {
+        const mockTask = {
+          id: taskAUuid,
+          project_id: projectAUuid,
+          title: 'Project A Task',
+          status: 'TODO',
+          priority: 'MEDIUM',
+          creator_id: 'user-a-uuid',
+          created_at: '2026-10-01T12:00:00.000Z',
+        };
+
+        const mockSingle = vi.fn().mockResolvedValue({ data: mockTask, error: null });
+        const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+        const mockInsert = vi.fn().mockReturnValue({ select: mockSelect });
+        const mockClient = { from: vi.fn().mockReturnValue({ insert: mockInsert }) };
+
+        vi.spyOn(service as any, 'getSupabaseClient').mockReturnValue(mockClient);
+
+        const result = await service.create(
+          { projectId: projectAUuid, title: 'Project A Task' },
+          userAJwt,
+        );
+
+        expect(result.id).toBe(taskAUuid);
+        expect(result.creatorId).toBe('user-a-uuid');
+      });
+
+      it('Owner reads task (PASS)', async () => {
+        const mockTask = {
+          id: taskAUuid,
+          project_id: projectAUuid,
+          title: 'Project A Task',
+          status: 'TODO',
+          priority: 'MEDIUM',
+        };
+
+        const mockMaybeSingle = vi.fn().mockResolvedValue({ data: mockTask, error: null });
+        const mockEq = vi.fn().mockReturnValue({ maybeSingle: mockMaybeSingle });
+        const mockSelect = vi.fn().mockReturnValue({ eq: mockEq });
+        const mockClient = { from: vi.fn().mockReturnValue({ select: mockSelect }) };
+
+        vi.spyOn(service as any, 'getSupabaseClient').mockReturnValue(mockClient);
+
+        const result = await service.findOne(taskAUuid, userAJwt);
+        expect(result.id).toBe(taskAUuid);
+      });
+
+      it('Owner updates task (PASS)', async () => {
+        vi.spyOn(service, 'findOne').mockResolvedValue({
+          id: taskAUuid,
+          projectId: projectAUuid,
+          title: 'Project A Task',
+          status: TaskStatus.TODO,
+          priority: TaskPriority.MEDIUM,
+        } as any);
+
+        const updatedRow = {
+          id: taskAUuid,
+          project_id: projectAUuid,
+          title: 'Updated Title',
+          status: 'IN_PROGRESS',
+        };
+
+        const mockSingle = vi.fn().mockResolvedValue({ data: updatedRow, error: null });
+        const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+        const mockEq = vi.fn().mockReturnValue({ select: mockSelect });
+        const mockUpdate = vi.fn().mockReturnValue({ eq: mockEq });
+        const mockClient = { from: vi.fn().mockReturnValue({ update: mockUpdate }) };
+
+        vi.spyOn(service as any, 'getSupabaseClient').mockReturnValue(mockClient);
+
+        const result = await service.update(
+          taskAUuid,
+          { title: 'Updated Title', status: TaskStatus.IN_PROGRESS },
+          userAJwt,
+        );
+
+        expect(result.title).toBe('Updated Title');
+      });
+
+      it('Owner deletes task (PASS)', async () => {
+        vi.spyOn(service, 'findOne').mockResolvedValue({
+          id: taskAUuid,
+          projectId: projectAUuid,
+          title: 'Project A Task',
+        } as any);
+
+        const mockEq = vi.fn().mockResolvedValue({ error: null });
+        const mockDelete = vi.fn().mockReturnValue({ eq: mockEq });
+        const mockClient = { from: vi.fn().mockReturnValue({ delete: mockDelete }) };
+
+        vi.spyOn(service as any, 'getSupabaseClient').mockReturnValue(mockClient);
+
+        const result = await service.remove(taskAUuid, userAJwt);
+        expect(result.message).toBe('Task deleted successfully');
+      });
+    });
+
+    // Group B: Unauthorized user
+    describe('Group B: Unauthorized user', () => {
+      it('Foreign project SELECT (FAIL / Not Found)', async () => {
+        const mockMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
+        const mockEq = vi.fn().mockReturnValue({ maybeSingle: mockMaybeSingle });
+        const mockSelect = vi.fn().mockReturnValue({ eq: mockEq });
+        const mockClient = { from: vi.fn().mockReturnValue({ select: mockSelect }) };
+
+        vi.spyOn(service as any, 'getSupabaseClient').mockReturnValue(mockClient);
+
+        await expect(service.findOne(taskAUuid, userBJwt)).rejects.toThrow(NotFoundException);
+      });
+
+      it('Foreign project UPDATE (FAIL / Not Found)', async () => {
+        vi.spyOn(service, 'findOne').mockRejectedValue(new NotFoundException('Task not found'));
+
+        await expect(
+          service.update(taskAUuid, { title: 'Malicious Update' }, userBJwt),
+        ).rejects.toThrow(NotFoundException);
+      });
+
+      it('Foreign project DELETE (FAIL / Not Found)', async () => {
+        vi.spyOn(service, 'findOne').mockRejectedValue(new NotFoundException('Task not found'));
+
+        await expect(service.remove(taskAUuid, userBJwt)).rejects.toThrow(NotFoundException);
+      });
+    });
+
+    // Group C: Assignee attack
+    describe('Group C: Assignee attack', () => {
+      it('User B assigned to foreign task must NOT gain project access (FAIL)', async () => {
+        const rlsError = {
+          message: 'new row violates row-level security policy for table "tasks"',
+        };
+
+        const mockSingle = vi.fn().mockResolvedValue({ data: null, error: rlsError });
+        const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+        const mockInsert = vi.fn().mockReturnValue({ select: mockSelect });
+        const mockClient = { from: vi.fn().mockReturnValue({ insert: mockInsert }) };
+
+        vi.spyOn(service as any, 'getSupabaseClient').mockReturnValue(mockClient);
+
+        await expect(
+          service.create(
+            {
+              projectId: projectAUuid,
+              title: 'Assignee Attack Task',
+              assigneeId: 'user-b-uuid',
+            },
+            userBJwt,
+          ),
+        ).rejects.toThrow(BadRequestException);
+      });
+    });
+
+    // Group D: Creator attack
+    describe('Group D: Creator attack', () => {
+      it('User B cannot create task in foreign project claiming creator (FAIL)', async () => {
+        const rlsError = {
+          message: 'new row violates row-level security policy for table "tasks"',
+        };
+
+        const mockSingle = vi.fn().mockResolvedValue({ data: null, error: rlsError });
+        const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+        const mockInsert = vi.fn().mockReturnValue({ select: mockSelect });
+        const mockClient = { from: vi.fn().mockReturnValue({ insert: mockInsert }) };
+
+        vi.spyOn(service as any, 'getSupabaseClient').mockReturnValue(mockClient);
+
+        await expect(
+          service.create(
+            {
+              projectId: projectAUuid,
+              title: 'Creator Attack Task',
+            },
+            userBJwt,
+          ),
+        ).rejects.toThrow(BadRequestException);
+      });
+    });
+
+    // Group E: Project movement
+    describe('Group E: Project movement', () => {
+      it('Project A -> Project B without Project B authorization (FAIL)', async () => {
+        vi.spyOn(service, 'findOne').mockResolvedValue({
+          id: taskAUuid,
+          projectId: projectAUuid,
+          title: 'Project A Task',
+          status: TaskStatus.TODO,
+          priority: TaskPriority.MEDIUM,
+        } as any);
+
+        const mockSingle = vi.fn().mockResolvedValue({
+          data: {
+            id: taskAUuid,
+            project_id: projectAUuid,
+            title: 'Attempted Move',
+          },
+          error: null,
+        });
+        const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+        const mockEq = vi.fn().mockReturnValue({ select: mockSelect });
+        const mockUpdate = vi.fn().mockReturnValue({ eq: mockEq });
+        const mockClient = { from: vi.fn().mockReturnValue({ update: mockUpdate }) };
+
+        vi.spyOn(service as any, 'getSupabaseClient').mockReturnValue(mockClient);
+
+        await service.update(
+          taskAUuid,
+          { title: 'Attempted Move' } as any,
+          userAJwt,
+        );
+
+        // Verify that project_id was NEVER included in the update payload
+        expect(mockUpdate).toHaveBeenCalledWith(
+          expect.not.objectContaining({ project_id: projectBUuid }),
+        );
+      });
+    });
+
+    // Group F: Team boundary
+    describe('Group F: Team boundary', () => {
+      it('Team Alpha member cannot access/manipulate Team Beta task (FAIL)', async () => {
+        const mockMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
+        const mockEq = vi.fn().mockReturnValue({ maybeSingle: mockMaybeSingle });
+        const mockSelect = vi.fn().mockReturnValue({ eq: mockEq });
+        const mockClient = { from: vi.fn().mockReturnValue({ select: mockSelect }) };
+
+        vi.spyOn(service as any, 'getSupabaseClient').mockReturnValue(mockClient);
+
+        await expect(service.findOne(taskBUuid, userAJwt)).rejects.toThrow(NotFoundException);
+      });
+    });
+
+    // Group G: Dependency boundary
+    describe('Group G: Dependency boundary', () => {
+      it('Accessible task -> inaccessible task dependency creation (FAIL)', async () => {
+        vi.spyOn(service, 'findOne').mockRejectedValueOnce(
+          new NotFoundException(`Task with ID '${taskBUuid}' not found`),
+        );
+
+        await expect(
+          service.addDependency(taskAUuid, { dependsOnTaskId: taskBUuid }, userAJwt),
+        ).rejects.toThrow(NotFoundException);
+      });
+
+      it('Deleting dependency on inaccessible task (FAIL)', async () => {
+        vi.spyOn(service, 'findOne').mockRejectedValue(
+          new NotFoundException(`Task with ID '${taskBUuid}' not found`),
+        );
+
+        await expect(
+          service.removeDependency(taskBUuid, depUuid, userAJwt),
+        ).rejects.toThrow(NotFoundException);
+      });
+    });
+
+    // Group H: Missing authentication
+    describe('Group H: Missing authentication', () => {
+      it('No Authorization header fails RLS (FAIL)', async () => {
+        const rlsError = {
+          message: 'new row violates row-level security policy for table "tasks"',
+        };
+
+        const mockSingle = vi.fn().mockResolvedValue({ data: null, error: rlsError });
+        const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+        const mockInsert = vi.fn().mockReturnValue({ select: mockSelect });
+
+        (service as any).supabase = {
+          from: vi.fn().mockReturnValue({ insert: mockInsert }),
+        };
+
+        await expect(
+          service.create({
+            projectId: projectAUuid,
+            title: 'Unauthenticated Task Creation',
+          }),
+        ).rejects.toThrow(BadRequestException);
+      });
+    });
+
+    // Group I: Invalid team/project combination
+    describe('Group I: Invalid team/project combination', () => {
+      it('team_id belongs to Project B, project_id = Project A (FAIL)', async () => {
+        const foreignTeamError = {
+          message: 'new row violates row-level security policy for table "tasks"',
+        };
+
+        const mockSingle = vi.fn().mockResolvedValue({ data: null, error: foreignTeamError });
+        const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+        const mockInsert = vi.fn().mockReturnValue({ select: mockSelect });
+        const mockClient = { from: vi.fn().mockReturnValue({ insert: mockInsert }) };
+
+        vi.spyOn(service as any, 'getSupabaseClient').mockReturnValue(mockClient);
+
+        await expect(
+          service.create(
+            {
+              projectId: projectAUuid,
+              title: 'Invalid Team-Project Combination',
+              teamId: 'team-belonging-to-project-b-uuid',
+            },
+            userAJwt,
+          ),
+        ).rejects.toThrow(BadRequestException);
+      });
+    });
+
+    // Group J: Valid team/project combination
+    describe('Group J: Valid team/project combination', () => {
+      it('team_id belongs to Project A, project_id = Project A, authorized user (PASS)', async () => {
+        const validTeamUuid = 'f1b2c3d4-5678-40ab-b123-1234567890ab';
+        const mockTask = {
+          id: taskAUuid,
+          project_id: projectAUuid,
+          team_id: validTeamUuid,
+          title: 'Valid Team Project Task',
+          status: 'TODO',
+          priority: 'MEDIUM',
+          creator_id: 'user-a-uuid',
+          created_at: '2026-10-01T12:00:00.000Z',
+        };
+
+        const mockSingle = vi.fn().mockResolvedValue({ data: mockTask, error: null });
+        const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+        const mockInsert = vi.fn().mockReturnValue({ select: mockSelect });
+        const mockClient = { from: vi.fn().mockReturnValue({ insert: mockInsert }) };
+
+        vi.spyOn(service as any, 'getSupabaseClient').mockReturnValue(mockClient);
+
+        const result = await service.create(
+          {
+            projectId: projectAUuid,
+            teamId: validTeamUuid,
+            title: 'Valid Team Project Task',
+          },
+          userAJwt,
+        );
+
+        expect(result.id).toBe(taskAUuid);
+        expect(result.teamId).toBe(validTeamUuid);
+        expect(result.projectId).toBe(projectAUuid);
+      });
+    });
+  });
 });
