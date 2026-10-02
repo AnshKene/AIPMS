@@ -170,7 +170,8 @@ export function TeamCard({
                 size="sm"
                 onClick={() => onEdit(team)}
                 className="h-7 px-2 text-xs text-slate-500 hover:text-slate-900"
-                title="Edit team"
+                aria-label={`Edit ${team.name}`}
+                title={`Edit ${team.name}`}
               >
                 <Pencil className="h-3 w-3 mr-1" />
                 Edit
@@ -183,7 +184,8 @@ export function TeamCard({
                 size="sm"
                 onClick={() => onDelete(team)}
                 className="h-7 px-2 text-xs text-slate-400 hover:text-red-600 hover:bg-red-50"
-                title="Delete team"
+                aria-label={`Delete ${team.name}`}
+                title={`Delete ${team.name}`}
               >
                 <Trash2 className="h-3 w-3" />
               </Button>
@@ -196,6 +198,7 @@ export function TeamCard({
             size="sm"
             onClick={() => onSelect?.(team)}
             className="h-7 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 gap-1 ml-auto group-hover:translate-x-0.5 transition-transform"
+            aria-label={`Manage ${team.name}`}
           >
             <span>Manage</span>
             <ArrowRight className="h-3.5 w-3.5" />

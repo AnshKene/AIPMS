@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { ConfirmDialog } from '@/components/ui/dialog';
 import { TeamCard } from '@/components/teams/team-card';
 import { TeamForm } from '@/components/teams/team-form';
 import { TeamDetail } from '@/components/teams/team-detail';
@@ -57,6 +58,11 @@ export default function TeamsPage() {
 
   // Edit Team State
   const [editingTeam, setEditingTeam] = React.useState<Team | null>(null);
+
+  // Delete Confirmation Dialog State
+  const [deletingTeam, setDeletingTeam] = React.useState<Team | null>(null);
+  const [deleteLoading, setDeleteLoading] = React.useState(false);
+  const [deleteError, setDeleteError] = React.useState<string | null>(null);
 
   // Load Projects for mapping & filter
   React.useEffect(() => {
@@ -157,6 +163,21 @@ export default function TeamsPage() {
     }
   }
 
+  async function handleConfirmDelete() {
+    if (!deletingTeam) return;
+    setDeleteLoading(true);
+    setDeleteError(null);
+    try {
+      await deleteTeam(deletingTeam.id);
+      handleTeamDeleted(deletingTeam.id);
+      setDeletingTeam(null);
+    } catch (err) {
+      setDeleteError(formatTeamError(err, 'Failed to delete team.'));
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
+
   return (
     <AppShell>
       <div className="space-y-6">
@@ -204,12 +225,14 @@ export default function TeamsPage() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9 pr-8 h-9 text-xs"
+                aria-label="Search teams"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  aria-label="Clear search"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -222,6 +245,7 @@ export default function TeamsPage() {
               <select
                 value={selectedProjectId}
                 onChange={handleProjectFilterChange}
+                aria-label="Filter by project"
                 className="h-9 rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:border-transparent cursor-pointer"
               >
                 <option value="">All Projects</option>
@@ -235,7 +259,9 @@ export default function TeamsPage() {
           </div>
 
           <div className="text-xs text-slate-500 font-medium self-end sm:self-center">
-            {filteredTeams.length} {filteredTeams.length === 1 ? 'team' : 'teams'} found
+            {searchQuery
+              ? `${filteredTeams.length} of ${teams.length} teams match`
+              : `${meta.total} ${meta.total === 1 ? 'team' : 'teams'} total`}
           </div>
         </div>
 
@@ -345,18 +371,9 @@ export default function TeamsPage() {
                     setDetailOpen(true);
                   }}
                   onEdit={(t) => setEditingTeam(t)}
-                  onDelete={async (t) => {
-                    const confirmed = window.confirm(
-                      `Delete team "${t.name}"? This action cannot be undone.`,
-                    );
-                    if (confirmed) {
-                      try {
-                        await deleteTeam(t.id);
-                        handleTeamDeleted(t.id);
-                      } catch (err) {
-                        alert(formatTeamError(err, 'Failed to delete team.'));
-                      }
-                    }
+                  onDelete={(t) => {
+                    setDeleteError(null);
+                    setDeletingTeam(t);
                   }}
                 />
               ))}
@@ -419,21 +436,37 @@ export default function TeamsPage() {
           </SheetContent>
         </Sheet>
 
-        {/* Edit Modal / Sheet for Card Trigger */}
-        {editingTeam && (
-          <TeamForm
-            mode="edit"
-            team={editingTeam}
-            trigger={<span className="hidden" />}
-            onSubmit={(payload) =>
-              updateTeam(editingTeam.id, payload as UpdateTeamPayload)
-            }
-            onSuccess={(updated) => {
-              handleTeamUpdated(updated);
-              setEditingTeam(null);
-            }}
-          />
-        )}
+        {/* Edit Modal / Sheet for Card Trigger (Clean Controlled Mode) */}
+        <TeamForm
+          mode="edit"
+          team={editingTeam}
+          open={editingTeam !== null}
+          onOpenChange={(isOpen) => {
+            if (!isOpen) setEditingTeam(null);
+          }}
+          onSubmit={(payload) =>
+            updateTeam(editingTeam!.id, payload as UpdateTeamPayload)
+          }
+          onSuccess={(updated) => {
+            handleTeamUpdated(updated);
+            setEditingTeam(null);
+          }}
+        />
+
+        {/* Accessible Delete Confirmation Dialog */}
+        <ConfirmDialog
+          open={deletingTeam !== null}
+          onOpenChange={(open) => {
+            if (!open) setDeletingTeam(null);
+          }}
+          title={`Delete "${deletingTeam?.name || 'Team'}"?`}
+          description="This will permanently delete this team and remove all member associations. Existing tasks and project records will remain intact. This action cannot be undone."
+          confirmLabel="Delete Team"
+          variant="destructive"
+          loading={deleteLoading}
+          error={deleteError}
+          onConfirm={handleConfirmDelete}
+        />
       </div>
     </AppShell>
   );

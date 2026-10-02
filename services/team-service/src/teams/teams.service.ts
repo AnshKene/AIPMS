@@ -34,10 +34,30 @@ export class TeamsService {
     });
   }
 
+  private getSupabaseClient(authHeader?: string): SupabaseClient {
+    if (authHeader && authHeader.trim().length > 0) {
+      const url = this.configService.get<string>('supabase.url') ?? '';
+      const anonKey = this.configService.get<string>('supabase.anonKey') ?? '';
+      return createClient(url, anonKey, {
+        global: {
+          headers: {
+            Authorization: authHeader,
+          },
+        },
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      });
+    }
+    return this.supabase;
+  }
+
   // --- TEAMS CRUD ---
 
-  async createTeam(dto: CreateTeamDto) {
+  async createTeam(dto: CreateTeamDto, authHeader?: string) {
     this.validateUuid(dto.projectId, 'projectId');
+    const client = this.getSupabaseClient(authHeader);
 
     const newTeam = {
       project_id: dto.projectId,
@@ -45,7 +65,7 @@ export class TeamsService {
       description: dto.description ?? null,
     };
 
-    const { data, error } = await this.supabase
+    const { data, error } = await client
       .from('teams')
       .insert([newTeam])
       .select()
@@ -59,12 +79,13 @@ export class TeamsService {
     return this.formatTeam(data);
   }
 
-  async findAllTeams(query: QueryTeamDto) {
+  async findAllTeams(query: QueryTeamDto, authHeader?: string) {
+    const client = this.getSupabaseClient(authHeader);
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.max(1, Math.min(100, query.limit ?? 20));
     const offset = (page - 1) * limit;
 
-    let supabaseQuery = this.supabase
+    let supabaseQuery = client
       .from('teams')
       .select('*', { count: 'exact' });
 
@@ -96,10 +117,11 @@ export class TeamsService {
     };
   }
 
-  async findOneTeam(id: string) {
+  async findOneTeam(id: string, authHeader?: string) {
     this.validateUuid(id, 'teamId');
+    const client = this.getSupabaseClient(authHeader);
 
-    const { data, error } = await this.supabase
+    const { data, error } = await client
       .from('teams')
       .select('*')
       .eq('id', id)
@@ -117,10 +139,11 @@ export class TeamsService {
     return this.formatTeam(data);
   }
 
-  async updateTeam(id: string, dto: UpdateTeamDto) {
+  async updateTeam(id: string, dto: UpdateTeamDto, authHeader?: string) {
     this.validateUuid(id, 'teamId');
+    const client = this.getSupabaseClient(authHeader);
 
-    await this.findOneTeam(id);
+    await this.findOneTeam(id, authHeader);
 
     const updateData: Record<string, any> = {
       updated_at: new Date().toISOString(),
@@ -129,7 +152,7 @@ export class TeamsService {
     if (dto.name !== undefined) updateData.name = dto.name;
     if (dto.description !== undefined) updateData.description = dto.description;
 
-    const { data, error } = await this.supabase
+    const { data, error } = await client
       .from('teams')
       .update(updateData)
       .eq('id', id)
@@ -144,12 +167,13 @@ export class TeamsService {
     return this.formatTeam(data);
   }
 
-  async removeTeam(id: string) {
+  async removeTeam(id: string, authHeader?: string) {
     this.validateUuid(id, 'teamId');
+    const client = this.getSupabaseClient(authHeader);
 
-    await this.findOneTeam(id);
+    await this.findOneTeam(id, authHeader);
 
-    const { error } = await this.supabase.from('teams').delete().eq('id', id);
+    const { error } = await client.from('teams').delete().eq('id', id);
 
     if (error) {
       this.logger.error(`Failed to delete team ${id}: ${error.message}`);
@@ -161,11 +185,12 @@ export class TeamsService {
 
   // --- TEAM MEMBERS CRUD ---
 
-  async addMember(teamId: string, dto: AddTeamMemberDto) {
+  async addMember(teamId: string, dto: AddTeamMemberDto, authHeader?: string) {
     this.validateUuid(teamId, 'teamId');
     this.validateUuid(dto.userId, 'userId');
+    const client = this.getSupabaseClient(authHeader);
 
-    await this.findOneTeam(teamId);
+    await this.findOneTeam(teamId, authHeader);
 
     const newMember = {
       team_id: teamId,
@@ -173,7 +198,7 @@ export class TeamsService {
       role: dto.role ?? TeamRole.MEMBER,
     };
 
-    const { data, error } = await this.supabase
+    const { data, error } = await client
       .from('team_members')
       .insert([newMember])
       .select()
@@ -199,16 +224,17 @@ export class TeamsService {
     return this.formatMember(data);
   }
 
-  async findMembers(teamId: string, query: QueryTeamMemberDto) {
+  async findMembers(teamId: string, query: QueryTeamMemberDto, authHeader?: string) {
     this.validateUuid(teamId, 'teamId');
+    const client = this.getSupabaseClient(authHeader);
 
-    await this.findOneTeam(teamId);
+    await this.findOneTeam(teamId, authHeader);
 
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.max(1, Math.min(100, query.limit ?? 20));
     const offset = (page - 1) * limit;
 
-    const { data, count, error } = await this.supabase
+    const { data, count, error } = await client
       .from('team_members')
       .select('*', { count: 'exact' })
       .eq('team_id', teamId)
@@ -240,13 +266,15 @@ export class TeamsService {
     teamId: string,
     memberId: string,
     dto: UpdateTeamMemberDto,
+    authHeader?: string,
   ) {
     this.validateUuid(teamId, 'teamId');
     this.validateUuid(memberId, 'memberId');
+    const client = this.getSupabaseClient(authHeader);
 
-    await this.findOneTeam(teamId);
+    await this.findOneTeam(teamId, authHeader);
 
-    const { data: existing, error: checkError } = await this.supabase
+    const { data: existing, error: checkError } = await client
       .from('team_members')
       .select('*')
       .eq('id', memberId)
@@ -259,7 +287,7 @@ export class TeamsService {
       );
     }
 
-    const { data, error } = await this.supabase
+    const { data, error } = await client
       .from('team_members')
       .update({ role: dto.role })
       .eq('id', memberId)
@@ -276,13 +304,14 @@ export class TeamsService {
     return this.formatMember(data);
   }
 
-  async removeMember(teamId: string, memberId: string) {
+  async removeMember(teamId: string, memberId: string, authHeader?: string) {
     this.validateUuid(teamId, 'teamId');
     this.validateUuid(memberId, 'memberId');
+    const client = this.getSupabaseClient(authHeader);
 
-    await this.findOneTeam(teamId);
+    await this.findOneTeam(teamId, authHeader);
 
-    const { data: existing, error: checkError } = await this.supabase
+    const { data: existing, error: checkError } = await client
       .from('team_members')
       .select('*')
       .eq('id', memberId)
@@ -295,7 +324,7 @@ export class TeamsService {
       );
     }
 
-    const { error } = await this.supabase
+    const { error } = await client
       .from('team_members')
       .delete()
       .eq('id', memberId);

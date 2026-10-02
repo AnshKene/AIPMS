@@ -29,13 +29,17 @@ export function Sheet({
   onOpenChange?: (open: boolean) => void;
 }) {
   const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false);
-  const open = openProp ?? uncontrolledOpen;
+  const isControlled = openProp !== undefined;
+  const open = isControlled ? openProp : uncontrolledOpen;
+
   const setOpen = React.useCallback(
     (value: boolean) => {
-      setUncontrolledOpen(value);
+      if (!isControlled) {
+        setUncontrolledOpen(value);
+      }
       onOpenChange?.(value);
     },
-    [onOpenChange],
+    [isControlled, onOpenChange],
   );
 
   return (
@@ -56,7 +60,10 @@ export function SheetTrigger({
 
   if (asChild && React.isValidElement(children)) {
     return React.cloneElement(children as React.ReactElement<{ onClick?: () => void }>, {
-      onClick: () => setOpen(true),
+      onClick: (e?: React.MouseEvent) => {
+        (children as React.ReactElement<{ onClick?: (e?: React.MouseEvent) => void }>).props.onClick?.(e);
+        setOpen(true);
+      },
     });
   }
 
@@ -76,17 +83,40 @@ export function SheetContent({
 }) {
   const { open, setOpen } = useSheet();
 
+  React.useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape' && open) {
+        setOpen(false);
+      }
+    }
+
+    if (open) {
+      document.addEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = 'hidden';
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+    };
+  }, [open, setOpen]);
+
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex">
+    <div
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex justify-end"
+    >
       <div
         className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"
         onClick={() => setOpen(false)}
+        aria-hidden="true"
       />
       <div
         className={cn(
-          'relative z-50 flex h-full w-72 flex-col bg-white p-6 shadow-xl transition ease-in-out duration-300',
+          'relative z-50 flex h-full w-full max-w-md flex-col bg-white p-6 shadow-xl transition ease-in-out duration-300 animate-in slide-in-from-right',
           className,
         )}
       >
