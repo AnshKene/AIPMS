@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Headers,
   HttpCode,
   HttpStatus,
   Param,
@@ -36,16 +37,22 @@ export class TasksController {
   @ApiOperation({ summary: 'Create a new task' })
   @ApiCreatedResponse({ description: 'Task created successfully' })
   @ApiBadRequestResponse({ description: 'Invalid input or date validation failed' })
-  async create(@Body() dto: CreateTaskDto) {
-    return this.tasksService.create(dto);
+  async create(
+    @Body() dto: CreateTaskDto,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return this.tasksService.create(dto, authHeader);
   }
 
   @Get()
   @ApiOperation({ summary: 'List tasks with optional filtering and pagination' })
   @ApiOkResponse({ description: 'Paginated list of tasks' })
   @ApiBadRequestResponse({ description: 'Invalid query parameters' })
-  async findAll(@Query() query: QueryTaskDto) {
-    return this.tasksService.findAll(query);
+  async findAll(
+    @Query() query: QueryTaskDto,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return this.tasksService.findAll(query, authHeader);
   }
 
   @Get(':id')
@@ -54,8 +61,11 @@ export class TasksController {
   @ApiOkResponse({ description: 'Task details' })
   @ApiNotFoundResponse({ description: 'Task not found' })
   @ApiBadRequestResponse({ description: 'Invalid UUID format' })
-  async findOne(@Param('id') id: string) {
-    return this.tasksService.findOne(id);
+  async findOne(
+    @Param('id') id: string,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return this.tasksService.findOne(id, authHeader);
   }
 
   @Patch(':id')
@@ -64,8 +74,12 @@ export class TasksController {
   @ApiOkResponse({ description: 'Updated task details' })
   @ApiNotFoundResponse({ description: 'Task not found' })
   @ApiBadRequestResponse({ description: 'Invalid input or date validation failed' })
-  async update(@Param('id') id: string, @Body() dto: UpdateTaskDto) {
-    return this.tasksService.update(id, dto);
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateTaskDto,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return this.tasksService.update(id, dto, authHeader);
   }
 
   @Delete(':id')
@@ -75,8 +89,11 @@ export class TasksController {
   @ApiOkResponse({ description: 'Task deleted successfully' })
   @ApiNotFoundResponse({ description: 'Task not found' })
   @ApiBadRequestResponse({ description: 'Invalid UUID format' })
-  async remove(@Param('id') id: string) {
-    return this.tasksService.remove(id);
+  async remove(
+    @Param('id') id: string,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return this.tasksService.remove(id, authHeader);
   }
 
   @Post(':id/dependencies')
@@ -89,8 +106,9 @@ export class TasksController {
   async addDependency(
     @Param('id') taskId: string,
     @Body() dto: AddTaskDependencyDto,
+    @Headers('authorization') authHeader?: string,
   ) {
-    return this.tasksService.addDependency(taskId, dto);
+    return this.tasksService.addDependency(taskId, dto, authHeader);
   }
 
   @Get(':id/dependencies')
@@ -102,8 +120,9 @@ export class TasksController {
   async listDependencies(
     @Param('id') taskId: string,
     @Query() query: QueryTaskDependencyDto,
+    @Headers('authorization') authHeader?: string,
   ) {
-    return this.tasksService.listDependencies(taskId, query);
+    return this.tasksService.listDependencies(taskId, query, authHeader);
   }
 
   @Delete(':taskId/dependencies/:dependencyId')
@@ -117,7 +136,8 @@ export class TasksController {
   async removeDependency(
     @Param('taskId') taskId: string,
     @Param('dependencyId') dependencyId: string,
+    @Headers('authorization') authHeader?: string,
   ) {
-    return this.tasksService.removeDependency(taskId, dependencyId);
+    return this.tasksService.removeDependency(taskId, dependencyId, authHeader);
   }
 }

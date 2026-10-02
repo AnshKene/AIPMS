@@ -34,7 +34,26 @@ export class TasksService {
     });
   }
 
-  async create(dto: CreateTaskDto) {
+  private getSupabaseClient(authHeader?: string): SupabaseClient {
+    if (authHeader && authHeader.trim().length > 0) {
+      const url = this.configService.get<string>('supabase.url') ?? '';
+      const anonKey = this.configService.get<string>('supabase.anonKey') ?? '';
+      return createClient(url, anonKey, {
+        global: {
+          headers: {
+            Authorization: authHeader,
+          },
+        },
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      });
+    }
+    return this.supabase;
+  }
+
+  async create(dto: CreateTaskDto, authHeader?: string) {
     this.validateDates(dto.startDate, dto.dueDate);
 
     const newTask = {
@@ -49,7 +68,9 @@ export class TasksService {
       due_date: dto.dueDate ?? null,
     };
 
-    const { data, error } = await this.supabase
+    const client = this.getSupabaseClient(authHeader);
+
+    const { data, error } = await client
       .from('tasks')
       .insert([newTask])
       .select()
@@ -63,12 +84,13 @@ export class TasksService {
     return this.formatTask(data);
   }
 
-  async findAll(query: QueryTaskDto) {
+  async findAll(query: QueryTaskDto, authHeader?: string) {
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.max(1, Math.min(100, query.limit ?? 20));
     const offset = (page - 1) * limit;
 
-    let supabaseQuery = this.supabase
+    const client = this.getSupabaseClient(authHeader);
+    let supabaseQuery = client
       .from('tasks')
       .select('*', { count: 'exact' });
 
@@ -115,10 +137,11 @@ export class TasksService {
     };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, authHeader?: string) {
     this.validateUuid(id);
 
-    const { data, error } = await this.supabase
+    const client = this.getSupabaseClient(authHeader);
+    const { data, error } = await client
       .from('tasks')
       .select('*')
       .eq('id', id)
@@ -136,10 +159,10 @@ export class TasksService {
     return this.formatTask(data);
   }
 
-  async update(id: string, dto: UpdateTaskDto) {
+  async update(id: string, dto: UpdateTaskDto, authHeader?: string) {
     this.validateUuid(id);
 
-    const existing = await this.findOne(id);
+    const existing = await this.findOne(id, authHeader);
 
     const effectiveStartDate = dto.startDate ?? existing.startDate;
     const effectiveDueDate = dto.dueDate ?? existing.dueDate;
@@ -159,7 +182,8 @@ export class TasksService {
     if (dto.startDate !== undefined) updateData.start_date = dto.startDate;
     if (dto.dueDate !== undefined) updateData.due_date = dto.dueDate;
 
-    const { data, error } = await this.supabase
+    const client = this.getSupabaseClient(authHeader);
+    const { data, error } = await client
       .from('tasks')
       .update(updateData)
       .eq('id', id)
@@ -174,12 +198,13 @@ export class TasksService {
     return this.formatTask(data);
   }
 
-  async remove(id: string) {
+  async remove(id: string, authHeader?: string) {
     this.validateUuid(id);
 
-    await this.findOne(id);
+    await this.findOne(id, authHeader);
 
-    const { error } = await this.supabase
+    const client = this.getSupabaseClient(authHeader);
+    const { error } = await client
       .from('tasks')
       .delete()
       .eq('id', id);
@@ -192,7 +217,7 @@ export class TasksService {
     return { message: 'Task deleted successfully', id };
   }
 
-  async addDependency(taskId: string, dto: AddTaskDependencyDto) {
+  async addDependency(taskId: string, dto: AddTaskDependencyDto, authHeader?: string) {
     this.validateUuid(taskId);
     this.validateUuid(dto.dependsOnTaskId);
 
@@ -200,12 +225,14 @@ export class TasksService {
       throw new BadRequestException('A task cannot depend on itself');
     }
 
-    // Verify both tasks exist
-    await this.findOne(taskId);
-    await this.findOne(dto.dependsOnTaskId);
+    // Verify both tasks exist in authorized scope
+    await this.findOne(taskId, authHeader);
+    await this.findOne(dto.dependsOnTaskId, authHeader);
+
+    const client = this.getSupabaseClient(authHeader);
 
     // Check if dependency already exists
-    const { data: existingDep, error: existingError } = await this.supabase
+    const { data: existingDep, error: existingError } = await client
       .from('task_dependencies')
       .select('*')
       .eq('task_id', taskId)
@@ -226,7 +253,7 @@ export class TasksService {
       depends_on_task_id: dto.dependsOnTaskId,
     };
 
-    const { data, error } = await this.supabase
+    const { data, error } = await client
       .from('task_dependencies')
       .insert([newDep])
       .select()
@@ -240,17 +267,18 @@ export class TasksService {
     return this.formatDependency(data);
   }
 
-  async listDependencies(taskId: string, query: QueryTaskDependencyDto) {
+  async listDependencies(taskId: string, query: QueryTaskDependencyDto, authHeader?: string) {
     this.validateUuid(taskId);
 
-    // Verify parent task exists
-    await this.findOne(taskId);
+    // Verify parent task exists in authorized scope
+    await this.findOne(taskId, authHeader);
 
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.max(1, Math.min(100, query.limit ?? 20));
     const offset = (page - 1) * limit;
 
-    const { data, count, error } = await this.supabase
+    const client = this.getSupabaseClient(authHeader);
+    const { data, count, error } = await client
       .from('task_dependencies')
       .select('*', { count: 'exact' })
       .eq('task_id', taskId)
@@ -276,14 +304,15 @@ export class TasksService {
     };
   }
 
-  async removeDependency(taskId: string, dependencyId: string) {
+  async removeDependency(taskId: string, dependencyId: string, authHeader?: string) {
     this.validateUuid(taskId);
     this.validateUuid(dependencyId);
 
-    // Verify parent task exists
-    await this.findOne(taskId);
+    // Verify parent task exists in authorized scope
+    await this.findOne(taskId, authHeader);
 
-    const { data, error } = await this.supabase
+    const client = this.getSupabaseClient(authHeader);
+    const { data, error } = await client
       .from('task_dependencies')
       .delete()
       .eq('id', dependencyId)
@@ -333,6 +362,7 @@ export class TasksService {
       priority: row.priority,
       assigneeId: row.assignee_id ?? null,
       teamId: row.team_id ?? null,
+      creatorId: row.creator_id ?? null,
       startDate: row.start_date ?? null,
       dueDate: row.due_date ?? null,
       createdAt: row.created_at,
