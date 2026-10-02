@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Headers,
   HttpCode,
   HttpStatus,
   Param,
@@ -32,29 +33,28 @@ export class TeamsController {
   @ApiResponse({
     status: 201,
     description: 'Team created successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string', example: 'd0a1b2c3-4567-89ab-cdef-0123456789ab' },
-        projectId: { type: 'string', example: 'e1b2c3d4-5678-90ab-cdef-1234567890ab' },
-        name: { type: 'string', example: 'Development Team' },
-        description: { type: 'string', example: 'AIPMS development team' },
-        createdAt: { type: 'string', example: '2026-09-25T20:00:00.000Z' },
-        updatedAt: { type: 'string', example: '2026-09-25T20:00:00.000Z' },
-      },
-    },
   })
   @ApiResponse({ status: 400, description: 'Bad Request / Validation Error' })
-  async createTeam(@Body() createTeamDto: CreateTeamDto) {
-    return this.teamsService.createTeam(createTeamDto);
+  async createTeam(
+    @Body() createTeamDto: CreateTeamDto,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return authHeader
+      ? this.teamsService.createTeam(createTeamDto, authHeader)
+      : this.teamsService.createTeam(createTeamDto);
   }
 
   @Get()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'List teams with pagination and project filter' })
   @ApiResponse({ status: 200, description: 'Teams listed successfully' })
-  async findAllTeams(@Query() query: QueryTeamDto) {
-    return this.teamsService.findAllTeams(query);
+  async findAllTeams(
+    @Query() query: QueryTeamDto,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return authHeader
+      ? this.teamsService.findAllTeams(query, authHeader)
+      : this.teamsService.findAllTeams(query);
   }
 
   @Get(':id')
@@ -64,8 +64,13 @@ export class TeamsController {
   @ApiResponse({ status: 200, description: 'Team found' })
   @ApiResponse({ status: 400, description: 'Invalid UUID format' })
   @ApiResponse({ status: 404, description: 'Team not found' })
-  async findOneTeam(@Param('id') id: string) {
-    return this.teamsService.findOneTeam(id);
+  async findOneTeam(
+    @Param('id') id: string,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return authHeader
+      ? this.teamsService.findOneTeam(id, authHeader)
+      : this.teamsService.findOneTeam(id);
   }
 
   @Patch(':id')
@@ -78,8 +83,11 @@ export class TeamsController {
   async updateTeam(
     @Param('id') id: string,
     @Body() updateTeamDto: UpdateTeamDto,
+    @Headers('authorization') authHeader?: string,
   ) {
-    return this.teamsService.updateTeam(id, updateTeamDto);
+    return authHeader
+      ? this.teamsService.updateTeam(id, updateTeamDto, authHeader)
+      : this.teamsService.updateTeam(id, updateTeamDto);
   }
 
   @Delete(':id')
@@ -89,8 +97,13 @@ export class TeamsController {
   @ApiResponse({ status: 200, description: 'Team deleted successfully' })
   @ApiResponse({ status: 400, description: 'Invalid UUID format' })
   @ApiResponse({ status: 404, description: 'Team not found' })
-  async removeTeam(@Param('id') id: string) {
-    return this.teamsService.removeTeam(id);
+  async removeTeam(
+    @Param('id') id: string,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return authHeader
+      ? this.teamsService.removeTeam(id, authHeader)
+      : this.teamsService.removeTeam(id);
   }
 
   // --- TEAM MEMBERS ENDPOINTS ---
@@ -102,16 +115,6 @@ export class TeamsController {
   @ApiResponse({
     status: 201,
     description: 'Member added successfully',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string', example: 'f0a1b2c3-4567-89ab-cdef-0123456789ab' },
-        teamId: { type: 'string', example: 'd0a1b2c3-4567-89ab-cdef-0123456789ab' },
-        userId: { type: 'string', example: 'a1b2c3d4-5678-90ab-cdef-1234567890ab' },
-        role: { type: 'string', example: 'TEAM_LEAD' },
-        createdAt: { type: 'string', example: '2026-09-25T20:00:00.000Z' },
-      },
-    },
   })
   @ApiResponse({ status: 400, description: 'Bad Request / Invalid Role or UUID' })
   @ApiResponse({ status: 404, description: 'Team not found' })
@@ -119,8 +122,11 @@ export class TeamsController {
   async addMember(
     @Param('teamId') teamId: string,
     @Body() addTeamMemberDto: AddTeamMemberDto,
+    @Headers('authorization') authHeader?: string,
   ) {
-    return this.teamsService.addMember(teamId, addTeamMemberDto);
+    return authHeader
+      ? this.teamsService.addMember(teamId, addTeamMemberDto, authHeader)
+      : this.teamsService.addMember(teamId, addTeamMemberDto);
   }
 
   @Get(':teamId/members')
@@ -132,8 +138,11 @@ export class TeamsController {
   async findMembers(
     @Param('teamId') teamId: string,
     @Query() query: QueryTeamMemberDto,
+    @Headers('authorization') authHeader?: string,
   ) {
-    return this.teamsService.findMembers(teamId, query);
+    return authHeader
+      ? this.teamsService.findMembers(teamId, query, authHeader)
+      : this.teamsService.findMembers(teamId, query);
   }
 
   @Patch(':teamId/members/:memberId')
@@ -148,8 +157,11 @@ export class TeamsController {
     @Param('teamId') teamId: string,
     @Param('memberId') memberId: string,
     @Body() updateTeamMemberDto: UpdateTeamMemberDto,
+    @Headers('authorization') authHeader?: string,
   ) {
-    return this.teamsService.updateMemberRole(teamId, memberId, updateTeamMemberDto);
+    return authHeader
+      ? this.teamsService.updateMemberRole(teamId, memberId, updateTeamMemberDto, authHeader)
+      : this.teamsService.updateMemberRole(teamId, memberId, updateTeamMemberDto);
   }
 
   @Delete(':teamId/members/:memberId')
@@ -162,7 +174,10 @@ export class TeamsController {
   async removeMember(
     @Param('teamId') teamId: string,
     @Param('memberId') memberId: string,
+    @Headers('authorization') authHeader?: string,
   ) {
-    return this.teamsService.removeMember(teamId, memberId);
+    return authHeader
+      ? this.teamsService.removeMember(teamId, memberId, authHeader)
+      : this.teamsService.removeMember(teamId, memberId);
   }
 }

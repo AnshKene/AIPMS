@@ -15,6 +15,7 @@ import { TeamCard } from './team-card';
 import { TeamForm } from './team-form';
 import { TeamDetail } from './team-detail';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { ConfirmDialog } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Users, Plus, AlertCircle } from 'lucide-react';
 
@@ -31,6 +32,10 @@ export function TeamManagement({ projectId }: TeamManagementProps) {
   const [detailOpen, setDetailOpen] = React.useState(false);
 
   const [editingTeam, setEditingTeam] = React.useState<Team | null>(null);
+
+  const [deletingTeam, setDeletingTeam] = React.useState<Team | null>(null);
+  const [deleteLoading, setDeleteLoading] = React.useState(false);
+  const [deleteError, setDeleteError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -92,6 +97,21 @@ export function TeamManagement({ projectId }: TeamManagementProps) {
     if (activeTeam?.id === teamId) {
       setDetailOpen(false);
       setActiveTeam(null);
+    }
+  }
+
+  async function handleConfirmDelete() {
+    if (!deletingTeam) return;
+    setDeleteLoading(true);
+    setDeleteError(null);
+    try {
+      await deleteTeam(deletingTeam.id);
+      handleTeamDeleted(deletingTeam.id);
+      setDeletingTeam(null);
+    } catch (err) {
+      setDeleteError(formatTeamError(err, 'Failed to delete team.'));
+    } finally {
+      setDeleteLoading(false);
     }
   }
 
@@ -189,18 +209,9 @@ export function TeamManagement({ projectId }: TeamManagementProps) {
                 setDetailOpen(true);
               }}
               onEdit={(t) => setEditingTeam(t)}
-              onDelete={async (t) => {
-                const confirmed = window.confirm(
-                  `Delete team "${t.name}"? This action cannot be undone.`,
-                );
-                if (confirmed) {
-                  try {
-                    await deleteTeam(t.id);
-                    handleTeamDeleted(t.id);
-                  } catch (err) {
-                    alert(formatTeamError(err, 'Failed to delete team.'));
-                  }
-                }
+              onDelete={(t) => {
+                setDeleteError(null);
+                setDeletingTeam(t);
               }}
             />
           ))}
@@ -225,21 +236,37 @@ export function TeamManagement({ projectId }: TeamManagementProps) {
         </SheetContent>
       </Sheet>
 
-      {/* Card Edit Form Trigger */}
-      {editingTeam && (
-        <TeamForm
-          mode="edit"
-          team={editingTeam}
-          trigger={<span className="hidden" />}
-          onSubmit={(payload) =>
-            updateTeam(editingTeam.id, payload as UpdateTeamPayload)
-          }
-          onSuccess={(updated) => {
-            handleTeamUpdated(updated);
-            setEditingTeam(null);
-          }}
-        />
-      )}
+      {/* Controlled Edit Team Drawer */}
+      <TeamForm
+        mode="edit"
+        team={editingTeam}
+        open={editingTeam !== null}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) setEditingTeam(null);
+        }}
+        onSubmit={(payload) =>
+          updateTeam(editingTeam!.id, payload as UpdateTeamPayload)
+        }
+        onSuccess={(updated) => {
+          handleTeamUpdated(updated);
+          setEditingTeam(null);
+        }}
+      />
+
+      {/* Confirmation Dialog */}
+      <ConfirmDialog
+        open={deletingTeam !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeletingTeam(null);
+        }}
+        title={`Delete "${deletingTeam?.name || 'Team'}"?`}
+        description="This will permanently delete this team and remove all member associations. Existing tasks and project records will remain intact. This action cannot be undone."
+        confirmLabel="Delete Team"
+        variant="destructive"
+        loading={deleteLoading}
+        error={deleteError}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   );
 }
