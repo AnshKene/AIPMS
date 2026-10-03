@@ -32,6 +32,25 @@ export class RisksService {
     });
   }
 
+  private getSupabaseClient(authHeader?: string): SupabaseClient {
+    if (authHeader && authHeader.trim().length > 0) {
+      const url = this.configService.get<string>('supabase.url') ?? '';
+      const anonKey = this.configService.get<string>('supabase.anonKey') ?? '';
+      return createClient(url, anonKey, {
+        global: {
+          headers: {
+            Authorization: authHeader,
+          },
+        },
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      });
+    }
+    return this.supabase;
+  }
+
   calculateRiskScore(probability: RiskProbability, impact: RiskImpact): number {
     const p = this.getNumericValue(probability);
     const i = this.getNumericValue(impact);
@@ -51,12 +70,13 @@ export class RisksService {
     }
   }
 
-  async create(dto: CreateRiskDto) {
+  async create(dto: CreateRiskDto, authHeader?: string) {
     this.validateUuid(dto.project_id);
     if (dto.owner_id) {
       this.validateUuid(dto.owner_id);
     }
 
+    const client = this.getSupabaseClient(authHeader);
     const riskScore = this.calculateRiskScore(dto.probability, dto.impact);
 
     const newRisk = {
@@ -72,7 +92,7 @@ export class RisksService {
       due_date: dto.due_date ?? null,
     };
 
-    const { data, error } = await this.supabase
+    const { data, error } = await client
       .from('risks')
       .insert([newRisk])
       .select()
@@ -86,16 +106,17 @@ export class RisksService {
     return this.formatRisk(data);
   }
 
-  async findAll(query: QueryRiskDto) {
+  async findAll(query: QueryRiskDto, authHeader?: string) {
     if (query.project_id) {
       this.validateUuid(query.project_id);
     }
 
+    const client = this.getSupabaseClient(authHeader);
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.max(1, Math.min(100, query.limit ?? 20));
     const offset = (page - 1) * limit;
 
-    let supabaseQuery = this.supabase
+    let supabaseQuery = client
       .from('risks')
       .select('*', { count: 'exact' });
 
@@ -138,10 +159,11 @@ export class RisksService {
     };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, authHeader?: string) {
     this.validateUuid(id);
 
-    const { data, error } = await this.supabase
+    const client = this.getSupabaseClient(authHeader);
+    const { data, error } = await client
       .from('risks')
       .select('*')
       .eq('id', id)
@@ -159,13 +181,14 @@ export class RisksService {
     return this.formatRisk(data);
   }
 
-  async update(id: string, dto: UpdateRiskDto) {
+  async update(id: string, dto: UpdateRiskDto, authHeader?: string) {
     this.validateUuid(id);
     if (dto.owner_id) {
       this.validateUuid(dto.owner_id);
     }
 
-    const existing = await this.findOne(id);
+    const client = this.getSupabaseClient(authHeader);
+    const existing = await this.findOne(id, authHeader);
 
     const effectiveProbability = dto.probability ?? existing.probability;
     const effectiveImpact = dto.impact ?? existing.impact;
@@ -189,7 +212,7 @@ export class RisksService {
     if (dto.owner_id !== undefined) updateData.owner_id = dto.owner_id;
     if (dto.due_date !== undefined) updateData.due_date = dto.due_date;
 
-    const { data, error } = await this.supabase
+    const { data, error } = await client
       .from('risks')
       .update(updateData)
       .eq('id', id)
@@ -204,12 +227,13 @@ export class RisksService {
     return this.formatRisk(data);
   }
 
-  async remove(id: string) {
+  async remove(id: string, authHeader?: string) {
     this.validateUuid(id);
 
-    await this.findOne(id);
+    const client = this.getSupabaseClient(authHeader);
+    await this.findOne(id, authHeader);
 
-    const { error } = await this.supabase
+    const { error } = await client
       .from('risks')
       .delete()
       .eq('id', id);
