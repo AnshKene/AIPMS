@@ -38,6 +38,26 @@ describe('ReportsService', () => {
     expect(service).toBeDefined();
   });
 
+  // ─── Authentication & Supabase Client ────────────────────────────────────────
+
+  describe('getSupabaseClient and Auth Propagation', () => {
+    it('should return default supabase client when authHeader is not provided', () => {
+      const client = (service as any).getSupabaseClient();
+      expect(client).toBe((service as any).supabase);
+    });
+
+    it('should return default supabase client when authHeader is empty', () => {
+      const client = (service as any).getSupabaseClient('   ');
+      expect(client).toBe((service as any).supabase);
+    });
+
+    it('should return a new client configured with Authorization header when authHeader is provided', () => {
+      const client = (service as any).getSupabaseClient('Bearer valid-jwt-token');
+      expect(client).toBeDefined();
+      expect(client).not.toBe((service as any).supabase);
+    });
+  });
+
   // ─── UUID validation ─────────────────────────────────────────────────────────
 
   describe('UUID validation', () => {

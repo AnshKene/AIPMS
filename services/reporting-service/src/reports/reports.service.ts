@@ -151,12 +151,32 @@ export class ReportsService {
     });
   }
 
+  private getSupabaseClient(authHeader?: string): SupabaseClient {
+    if (authHeader && authHeader.trim().length > 0) {
+      const url = this.configService.get<string>('supabase.url') ?? '';
+      const anonKey = this.configService.get<string>('supabase.anonKey') ?? '';
+      return createClient(url, anonKey, {
+        global: {
+          headers: {
+            Authorization: authHeader,
+          },
+        },
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      });
+    }
+    return this.supabase;
+  }
+
   // ─── Task Report ────────────────────────────────────────────────────────────
 
-  async getTasksReport(projectId: string): Promise<TasksReport> {
+  async getTasksReport(projectId: string, authHeader?: string): Promise<TasksReport> {
     this.validateUuid(projectId);
+    const client = this.getSupabaseClient(authHeader);
 
-    const { data, error } = await this.supabase
+    const { data, error } = await client
       .from('tasks')
       .select('status, priority, due_date')
       .eq('project_id', projectId);
@@ -210,10 +230,11 @@ export class ReportsService {
 
   // ─── Sprint Report ──────────────────────────────────────────────────────────
 
-  async getSprintsReport(projectId: string): Promise<SprintsReport> {
+  async getSprintsReport(projectId: string, authHeader?: string): Promise<SprintsReport> {
     this.validateUuid(projectId);
+    const client = this.getSupabaseClient(authHeader);
 
-    const { data, error } = await this.supabase
+    const { data, error } = await client
       .from('sprints')
       .select('status')
       .eq('project_id', projectId);
@@ -248,10 +269,11 @@ export class ReportsService {
 
   // ─── Risk Report ────────────────────────────────────────────────────────────
 
-  async getRisksReport(projectId: string): Promise<RisksReport> {
+  async getRisksReport(projectId: string, authHeader?: string): Promise<RisksReport> {
     this.validateUuid(projectId);
+    const client = this.getSupabaseClient(authHeader);
 
-    const { data, error } = await this.supabase
+    const { data, error } = await client
       .from('risks')
       .select('status, probability, impact, risk_score')
       .eq('project_id', projectId);
@@ -314,24 +336,25 @@ export class ReportsService {
 
   // ─── Project Overview ───────────────────────────────────────────────────────
 
-  async getProjectOverview(projectId: string): Promise<ProjectOverviewReport> {
+  async getProjectOverview(projectId: string, authHeader?: string): Promise<ProjectOverviewReport> {
     this.validateUuid(projectId);
+    const client = this.getSupabaseClient(authHeader);
 
     const [projectData, tasksData, sprintsData, risksData] = await Promise.all([
-      this.supabase
+      client
         .from('projects')
         .select('id, name, status, start_date, end_date, owner_id')
         .eq('id', projectId)
         .maybeSingle(),
-      this.supabase
+      client
         .from('tasks')
         .select('status, due_date')
         .eq('project_id', projectId),
-      this.supabase
+      client
         .from('sprints')
         .select('status')
         .eq('project_id', projectId),
-      this.supabase
+      client
         .from('risks')
         .select('status, risk_score')
         .eq('project_id', projectId),

@@ -54,7 +54,7 @@ describe('Reporting Service (e2e)', () => {
   // ─── GET /api/reports/projects/:projectId/overview ───────────────────────────
 
   describe('GET /api/reports/projects/:projectId/overview', () => {
-    it('should return 200 with project overview report', async () => {
+    it('should return 200 with project overview report and forward Authorization header', async () => {
       const overview = {
         projectId: projectUuid,
         project: {
@@ -88,13 +88,15 @@ describe('Reporting Service (e2e)', () => {
         },
       };
 
-      vi.spyOn(reportsService, 'getProjectOverview').mockResolvedValue(overview as any);
+      const spy = vi.spyOn(reportsService, 'getProjectOverview').mockResolvedValue(overview as any);
 
       const response = await request(app.getHttpServer())
         .get(`/api/reports/projects/${projectUuid}/overview`)
+        .set('Authorization', 'Bearer sample-jwt-token')
         .expect(200);
 
       expect(response.body).toEqual(overview);
+      expect(spy).toHaveBeenCalledWith(projectUuid, 'Bearer sample-jwt-token');
     });
 
     it('should return 400 Bad Request on invalid UUID', async () => {
@@ -109,7 +111,7 @@ describe('Reporting Service (e2e)', () => {
   // ─── GET /api/reports/projects/:projectId/tasks ───────────────────────────────
 
   describe('GET /api/reports/projects/:projectId/tasks', () => {
-    it('should return 200 with tasks report', async () => {
+    it('should return 200 with tasks report and forward Authorization header', async () => {
       const tasksReport = {
         projectId: projectUuid,
         total: 10,
@@ -129,14 +131,16 @@ describe('Reporting Service (e2e)', () => {
         overdueTasks: 2,
       };
 
-      vi.spyOn(reportsService, 'getTasksReport').mockResolvedValue(tasksReport as any);
+      const spy = vi.spyOn(reportsService, 'getTasksReport').mockResolvedValue(tasksReport as any);
 
       const response = await request(app.getHttpServer())
         .get(`/api/reports/projects/${projectUuid}/tasks`)
+        .set('Authorization', 'Bearer sample-jwt-token')
         .expect(200);
 
       expect(response.body).toEqual(tasksReport);
       expect(response.body.overdueTasks).toBe(2);
+      expect(spy).toHaveBeenCalledWith(projectUuid, 'Bearer sample-jwt-token');
     });
 
     it('should return 400 Bad Request on invalid UUID', async () => {
@@ -151,7 +155,7 @@ describe('Reporting Service (e2e)', () => {
   // ─── GET /api/reports/projects/:projectId/sprints ────────────────────────────
 
   describe('GET /api/reports/projects/:projectId/sprints', () => {
-    it('should return 200 with sprints report', async () => {
+    it('should return 200 with sprints report and forward Authorization header', async () => {
       const sprintsReport = {
         projectId: projectUuid,
         total: 4,
@@ -163,13 +167,15 @@ describe('Reporting Service (e2e)', () => {
         },
       };
 
-      vi.spyOn(reportsService, 'getSprintsReport').mockResolvedValue(sprintsReport as any);
+      const spy = vi.spyOn(reportsService, 'getSprintsReport').mockResolvedValue(sprintsReport as any);
 
       const response = await request(app.getHttpServer())
         .get(`/api/reports/projects/${projectUuid}/sprints`)
+        .set('Authorization', 'Bearer sample-jwt-token')
         .expect(200);
 
       expect(response.body).toEqual(sprintsReport);
+      expect(spy).toHaveBeenCalledWith(projectUuid, 'Bearer sample-jwt-token');
     });
 
     it('should return 400 Bad Request on invalid UUID', async () => {
@@ -184,7 +190,7 @@ describe('Reporting Service (e2e)', () => {
   // ─── GET /api/reports/projects/:projectId/risks ───────────────────────────────
 
   describe('GET /api/reports/projects/:projectId/risks', () => {
-    it('should return 200 with risks report including probability and impact breakdown', async () => {
+    it('should return 200 with risks report and forward Authorization header', async () => {
       const risksReport = {
         projectId: projectUuid,
         total: 6,
@@ -209,14 +215,16 @@ describe('Reporting Service (e2e)', () => {
         highScoreRisks: 2,
       };
 
-      vi.spyOn(reportsService, 'getRisksReport').mockResolvedValue(risksReport as any);
+      const spy = vi.spyOn(reportsService, 'getRisksReport').mockResolvedValue(risksReport as any);
 
       const response = await request(app.getHttpServer())
         .get(`/api/reports/projects/${projectUuid}/risks`)
+        .set('Authorization', 'Bearer sample-jwt-token')
         .expect(200);
 
       expect(response.body).toEqual(risksReport);
       expect(response.body.highScoreRisks).toBe(2);
+      expect(spy).toHaveBeenCalledWith(projectUuid, 'Bearer sample-jwt-token');
     });
 
     it('should return 400 Bad Request on invalid UUID', async () => {

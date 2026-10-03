@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Headers,
   HttpCode,
   HttpStatus,
   Param,
@@ -31,8 +32,11 @@ export class ReportsController {
   @ApiParam({ name: 'projectId', description: 'Project UUID' })
   @ApiOkResponse({ description: 'Project overview report' })
   @ApiBadRequestResponse({ description: 'Invalid UUID format' })
-  async getProjectOverview(@Param('projectId') projectId: string) {
-    return this.reportsService.getProjectOverview(projectId);
+  async getProjectOverview(
+    @Param('projectId') projectId: string,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return this.reportsService.getProjectOverview(projectId, authHeader);
   }
 
   // ─── Tasks Report ────────────────────────────────────────────────────────────
@@ -47,8 +51,11 @@ export class ReportsController {
   @ApiParam({ name: 'projectId', description: 'Project UUID' })
   @ApiOkResponse({ description: 'Task report' })
   @ApiBadRequestResponse({ description: 'Invalid UUID format' })
-  async getTasksReport(@Param('projectId') projectId: string) {
-    return this.reportsService.getTasksReport(projectId);
+  async getTasksReport(
+    @Param('projectId') projectId: string,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return this.reportsService.getTasksReport(projectId, authHeader);
   }
 
   // ─── Sprints Report ──────────────────────────────────────────────────────────
@@ -63,8 +70,11 @@ export class ReportsController {
   @ApiParam({ name: 'projectId', description: 'Project UUID' })
   @ApiOkResponse({ description: 'Sprint report' })
   @ApiBadRequestResponse({ description: 'Invalid UUID format' })
-  async getSprintsReport(@Param('projectId') projectId: string) {
-    return this.reportsService.getSprintsReport(projectId);
+  async getSprintsReport(
+    @Param('projectId') projectId: string,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return this.reportsService.getSprintsReport(projectId, authHeader);
   }
 
   // ─── Risks Report ────────────────────────────────────────────────────────────
@@ -79,7 +89,10 @@ export class ReportsController {
   @ApiParam({ name: 'projectId', description: 'Project UUID' })
   @ApiOkResponse({ description: 'Risk report' })
   @ApiBadRequestResponse({ description: 'Invalid UUID format' })
-  async getRisksReport(@Param('projectId') projectId: string) {
-    return this.reportsService.getRisksReport(projectId);
+  async getRisksReport(
+    @Param('projectId') projectId: string,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return this.reportsService.getRisksReport(projectId, authHeader);
   }
 }
