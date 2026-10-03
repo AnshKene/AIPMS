@@ -31,9 +31,30 @@ export class SprintsService {
     });
   }
 
-  async create(dto: CreateSprintDto) {
+  private getSupabaseClient(authHeader?: string): SupabaseClient {
+    if (authHeader && authHeader.trim().length > 0) {
+      const url = this.configService.get<string>('supabase.url') ?? '';
+      const anonKey = this.configService.get<string>('supabase.anonKey') ?? '';
+      return createClient(url, anonKey, {
+        global: {
+          headers: {
+            Authorization: authHeader,
+          },
+        },
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      });
+    }
+    return this.supabase;
+  }
+
+  async create(dto: CreateSprintDto, authHeader?: string) {
     this.validateUuid(dto.project_id);
     this.validateDates(dto.start_date, dto.end_date);
+
+    const client = this.getSupabaseClient(authHeader);
 
     const newSprint = {
       project_id: dto.project_id,
@@ -44,7 +65,7 @@ export class SprintsService {
       end_date: dto.end_date,
     };
 
-    const { data, error } = await this.supabase
+    const { data, error } = await client
       .from('sprints')
       .insert([newSprint])
       .select()
@@ -58,16 +79,17 @@ export class SprintsService {
     return this.formatSprint(data);
   }
 
-  async findAll(query: QuerySprintDto) {
+  async findAll(query: QuerySprintDto, authHeader?: string) {
     if (query.project_id) {
       this.validateUuid(query.project_id);
     }
 
+    const client = this.getSupabaseClient(authHeader);
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.max(1, Math.min(100, query.limit ?? 20));
     const offset = (page - 1) * limit;
 
-    let supabaseQuery = this.supabase
+    let supabaseQuery = client
       .from('sprints')
       .select('*', { count: 'exact' });
 
@@ -102,10 +124,11 @@ export class SprintsService {
     };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, authHeader?: string) {
     this.validateUuid(id);
+    const client = this.getSupabaseClient(authHeader);
 
-    const { data, error } = await this.supabase
+    const { data, error } = await client
       .from('sprints')
       .select('*')
       .eq('id', id)
@@ -123,10 +146,11 @@ export class SprintsService {
     return this.formatSprint(data);
   }
 
-  async update(id: string, dto: UpdateSprintDto) {
+  async update(id: string, dto: UpdateSprintDto, authHeader?: string) {
     this.validateUuid(id);
+    const client = this.getSupabaseClient(authHeader);
 
-    const existing = await this.findOne(id);
+    const existing = await this.findOne(id, authHeader);
 
     const effectiveStartDate = dto.start_date ?? existing.start_date;
     const effectiveEndDate = dto.end_date ?? existing.end_date;
@@ -142,7 +166,7 @@ export class SprintsService {
     if (dto.start_date !== undefined) updateData.start_date = dto.start_date;
     if (dto.end_date !== undefined) updateData.end_date = dto.end_date;
 
-    const { data, error } = await this.supabase
+    const { data, error } = await client
       .from('sprints')
       .update(updateData)
       .eq('id', id)
@@ -157,10 +181,11 @@ export class SprintsService {
     return this.formatSprint(data);
   }
 
-  async start(id: string) {
+  async start(id: string, authHeader?: string) {
     this.validateUuid(id);
+    const client = this.getSupabaseClient(authHeader);
 
-    const existing = await this.findOne(id);
+    const existing = await this.findOne(id, authHeader);
 
     if (existing.status !== SprintStatus.PLANNED) {
       throw new ConflictException(
@@ -173,7 +198,7 @@ export class SprintsService {
       updated_at: new Date().toISOString(),
     };
 
-    const { data, error } = await this.supabase
+    const { data, error } = await client
       .from('sprints')
       .update(updateData)
       .eq('id', id)
@@ -188,10 +213,11 @@ export class SprintsService {
     return this.formatSprint(data);
   }
 
-  async complete(id: string) {
+  async complete(id: string, authHeader?: string) {
     this.validateUuid(id);
+    const client = this.getSupabaseClient(authHeader);
 
-    const existing = await this.findOne(id);
+    const existing = await this.findOne(id, authHeader);
 
     if (existing.status !== SprintStatus.ACTIVE) {
       throw new ConflictException(
@@ -204,7 +230,7 @@ export class SprintsService {
       updated_at: new Date().toISOString(),
     };
 
-    const { data, error } = await this.supabase
+    const { data, error } = await client
       .from('sprints')
       .update(updateData)
       .eq('id', id)
@@ -219,10 +245,11 @@ export class SprintsService {
     return this.formatSprint(data);
   }
 
-  async cancel(id: string) {
+  async cancel(id: string, authHeader?: string) {
     this.validateUuid(id);
+    const client = this.getSupabaseClient(authHeader);
 
-    const existing = await this.findOne(id);
+    const existing = await this.findOne(id, authHeader);
 
     if (
       existing.status === SprintStatus.COMPLETED ||
@@ -238,7 +265,7 @@ export class SprintsService {
       updated_at: new Date().toISOString(),
     };
 
-    const { data, error } = await this.supabase
+    const { data, error } = await client
       .from('sprints')
       .update(updateData)
       .eq('id', id)
@@ -253,10 +280,11 @@ export class SprintsService {
     return this.formatSprint(data);
   }
 
-  async remove(id: string) {
+  async remove(id: string, authHeader?: string) {
     this.validateUuid(id);
+    const client = this.getSupabaseClient(authHeader);
 
-    const existing = await this.findOne(id);
+    const existing = await this.findOne(id, authHeader);
 
     if (existing.status !== SprintStatus.PLANNED) {
       throw new ConflictException(
@@ -264,7 +292,7 @@ export class SprintsService {
       );
     }
 
-    const { error } = await this.supabase
+    const { error } = await client
       .from('sprints')
       .delete()
       .eq('id', id);

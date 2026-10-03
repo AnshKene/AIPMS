@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Headers,
   HttpCode,
   HttpStatus,
   Param,
@@ -34,16 +35,22 @@ export class SprintsController {
   @ApiOperation({ summary: 'Create a new sprint (initial status is always PLANNED)' })
   @ApiCreatedResponse({ description: 'Sprint created successfully' })
   @ApiBadRequestResponse({ description: 'Invalid input or date validation failed' })
-  async create(@Body() dto: CreateSprintDto) {
-    return this.sprintsService.create(dto);
+  async create(
+    @Body() dto: CreateSprintDto,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return this.sprintsService.create(dto, authHeader);
   }
 
   @Get()
   @ApiOperation({ summary: 'List sprints with optional filtering and pagination' })
   @ApiOkResponse({ description: 'Paginated list of sprints' })
   @ApiBadRequestResponse({ description: 'Invalid query parameters' })
-  async findAll(@Query() query: QuerySprintDto) {
-    return this.sprintsService.findAll(query);
+  async findAll(
+    @Query() query: QuerySprintDto,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return this.sprintsService.findAll(query, authHeader);
   }
 
   @Get(':id')
@@ -52,8 +59,11 @@ export class SprintsController {
   @ApiOkResponse({ description: 'Sprint details' })
   @ApiNotFoundResponse({ description: 'Sprint not found' })
   @ApiBadRequestResponse({ description: 'Invalid UUID format' })
-  async findOne(@Param('id') id: string) {
-    return this.sprintsService.findOne(id);
+  async findOne(
+    @Param('id') id: string,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return this.sprintsService.findOne(id, authHeader);
   }
 
   @Patch(':id')
@@ -62,8 +72,12 @@ export class SprintsController {
   @ApiOkResponse({ description: 'Sprint updated successfully' })
   @ApiNotFoundResponse({ description: 'Sprint not found' })
   @ApiBadRequestResponse({ description: 'Invalid input or date validation failed' })
-  async update(@Param('id') id: string, @Body() dto: UpdateSprintDto) {
-    return this.sprintsService.update(id, dto);
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateSprintDto,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return this.sprintsService.update(id, dto, authHeader);
   }
 
   @Post(':id/start')
@@ -74,8 +88,11 @@ export class SprintsController {
   @ApiConflictResponse({ description: 'Invalid status transition (must be PLANNED)' })
   @ApiNotFoundResponse({ description: 'Sprint not found' })
   @ApiBadRequestResponse({ description: 'Invalid UUID format' })
-  async start(@Param('id') id: string) {
-    return this.sprintsService.start(id);
+  async start(
+    @Param('id') id: string,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return this.sprintsService.start(id, authHeader);
   }
 
   @Post(':id/complete')
@@ -86,8 +103,11 @@ export class SprintsController {
   @ApiConflictResponse({ description: 'Invalid status transition (must be ACTIVE)' })
   @ApiNotFoundResponse({ description: 'Sprint not found' })
   @ApiBadRequestResponse({ description: 'Invalid UUID format' })
-  async complete(@Param('id') id: string) {
-    return this.sprintsService.complete(id);
+  async complete(
+    @Param('id') id: string,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return this.sprintsService.complete(id, authHeader);
   }
 
   @Post(':id/cancel')
@@ -98,8 +118,11 @@ export class SprintsController {
   @ApiConflictResponse({ description: 'Invalid status transition (cannot cancel COMPLETED/CANCELLED)' })
   @ApiNotFoundResponse({ description: 'Sprint not found' })
   @ApiBadRequestResponse({ description: 'Invalid UUID format' })
-  async cancel(@Param('id') id: string) {
-    return this.sprintsService.cancel(id);
+  async cancel(
+    @Param('id') id: string,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return this.sprintsService.cancel(id, authHeader);
   }
 
   @Delete(':id')
@@ -110,7 +133,10 @@ export class SprintsController {
   @ApiConflictResponse({ description: 'Only PLANNED sprints can be deleted' })
   @ApiNotFoundResponse({ description: 'Sprint not found' })
   @ApiBadRequestResponse({ description: 'Invalid UUID format' })
-  async remove(@Param('id') id: string) {
-    return this.sprintsService.remove(id);
+  async remove(
+    @Param('id') id: string,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return this.sprintsService.remove(id, authHeader);
   }
 }

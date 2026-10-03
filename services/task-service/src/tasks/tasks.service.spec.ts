@@ -713,6 +713,129 @@ describe('TasksService', () => {
         expect(result.teamId).toBe(validTeamUuid);
         expect(result.projectId).toBe(projectAUuid);
       });
+
+      it('should validate sprint belongs to same project on create', async () => {
+        const sprintUuid = '55555555-5555-4555-a555-555555555555';
+        const mockClient = {
+          from: vi.fn((table: string) => {
+            if (table === 'sprints') {
+              return {
+                select: vi.fn().mockReturnValue({
+                  eq: vi.fn().mockReturnValue({
+                    maybeSingle: vi.fn().mockResolvedValue({
+                      data: { id: sprintUuid, project_id: 'different-project-uuid' },
+                      error: null,
+                    }),
+                  }),
+                }),
+              };
+            }
+            return {
+              insert: vi.fn(),
+            };
+          }),
+        };
+
+        vi.spyOn(service as any, 'getSupabaseClient').mockReturnValue(mockClient);
+
+        await expect(
+          service.create({
+            projectId: projectAUuid,
+            sprintId: sprintUuid,
+            title: 'Cross project sprint task',
+          }),
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('should create task with valid sprint successfully', async () => {
+        const sprintUuid = '55555555-5555-4555-a555-555555555555';
+        const mockTaskRow = {
+          id: taskAUuid,
+          project_id: projectAUuid,
+          title: 'Sprint Task',
+          status: 'TODO',
+          priority: 'MEDIUM',
+          sprint_id: sprintUuid,
+          creator_id: 'user-a-uuid',
+          created_at: '2026-09-26T12:00:00Z',
+          updated_at: '2026-09-26T12:00:00Z',
+        };
+
+        const mockClient = {
+          from: vi.fn((table: string) => {
+            if (table === 'sprints') {
+              return {
+                select: vi.fn().mockReturnValue({
+                  eq: vi.fn().mockReturnValue({
+                    maybeSingle: vi.fn().mockResolvedValue({
+                      data: { id: sprintUuid, project_id: projectAUuid },
+                      error: null,
+                    }),
+                  }),
+                }),
+              };
+            }
+            return {
+              insert: vi.fn().mockReturnValue({
+                select: vi.fn().mockReturnValue({
+                  single: vi.fn().mockResolvedValue({ data: mockTaskRow, error: null }),
+                }),
+              }),
+            };
+          }),
+        };
+
+        vi.spyOn(service as any, 'getSupabaseClient').mockReturnValue(mockClient);
+
+        const result = await service.create({
+          projectId: projectAUuid,
+          sprintId: sprintUuid,
+          title: 'Sprint Task',
+        });
+
+        expect(result.id).toBe(taskAUuid);
+        expect(result.sprintId).toBe(sprintUuid);
+      });
+
+      it('should remove task from sprint when sprintId is null on update', async () => {
+        vi.spyOn(service, 'findOne').mockResolvedValue({
+          id: taskAUuid,
+          projectId: projectAUuid,
+          title: 'Task',
+          status: TaskStatus.TODO,
+          priority: TaskPriority.MEDIUM,
+          sprintId: '55555555-5555-4555-a555-555555555555',
+        } as any);
+
+        const updatedRow = {
+          id: taskAUuid,
+          project_id: projectAUuid,
+          title: 'Task',
+          status: 'TODO',
+          priority: 'MEDIUM',
+          sprint_id: null,
+          creator_id: 'user-a-uuid',
+          created_at: '2026-09-26T12:00:00Z',
+          updated_at: '2026-09-26T12:00:00Z',
+        };
+
+        const mockClient = {
+          from: vi.fn().mockReturnValue({
+            update: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                select: vi.fn().mockReturnValue({
+                  single: vi.fn().mockResolvedValue({ data: updatedRow, error: null }),
+                }),
+              }),
+            }),
+          }),
+        };
+
+        vi.spyOn(service as any, 'getSupabaseClient').mockReturnValue(mockClient);
+
+        const result = await service.update(taskAUuid, { sprintId: null });
+        expect(result.sprintId).toBeNull();
+      });
     });
   });
 });

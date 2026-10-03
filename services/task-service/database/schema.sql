@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS tasks (
 
   assignee_id UUID,
   team_id UUID,
+  sprint_id UUID REFERENCES sprints(id) ON DELETE SET NULL,
   creator_id UUID NOT NULL DEFAULT auth.uid(),
 
   start_date TIMESTAMPTZ,
@@ -39,6 +40,9 @@ CREATE TABLE IF NOT EXISTS tasks (
 -- Idempotent column addition for existing databases
 ALTER TABLE tasks
   ADD COLUMN IF NOT EXISTS creator_id UUID NOT NULL DEFAULT auth.uid();
+
+ALTER TABLE tasks
+  ADD COLUMN IF NOT EXISTS sprint_id UUID REFERENCES sprints(id) ON DELETE SET NULL;
 
 CREATE TABLE IF NOT EXISTS task_dependencies (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -64,6 +68,9 @@ CREATE INDEX IF NOT EXISTS idx_tasks_assignee_id
 
 CREATE INDEX IF NOT EXISTS idx_tasks_team_id
   ON tasks(team_id);
+
+CREATE INDEX IF NOT EXISTS idx_tasks_sprint_id
+  ON tasks(sprint_id);
 
 CREATE INDEX IF NOT EXISTS idx_tasks_status
   ON tasks(status);

@@ -56,6 +56,25 @@ export class TasksService {
   async create(dto: CreateTaskDto, authHeader?: string) {
     this.validateDates(dto.startDate, dto.dueDate);
 
+    const client = this.getSupabaseClient(authHeader);
+
+    if (dto.sprintId) {
+      this.validateUuid(dto.sprintId);
+      const { data: sprint, error: sprintError } = await client
+        .from('sprints')
+        .select('id, project_id')
+        .eq('id', dto.sprintId)
+        .maybeSingle();
+
+      if (sprintError || !sprint) {
+        throw new BadRequestException(`Sprint with ID '${dto.sprintId}' not found`);
+      }
+
+      if (sprint.project_id !== dto.projectId) {
+        throw new BadRequestException('Sprint belongs to a different project');
+      }
+    }
+
     const newTask = {
       project_id: dto.projectId,
       title: dto.title,
@@ -64,11 +83,10 @@ export class TasksService {
       priority: dto.priority ?? TaskPriority.MEDIUM,
       assignee_id: dto.assigneeId ?? null,
       team_id: dto.teamId ?? null,
+      sprint_id: dto.sprintId ?? null,
       start_date: dto.startDate ?? null,
       due_date: dto.dueDate ?? null,
     };
-
-    const client = this.getSupabaseClient(authHeader);
 
     const { data, error } = await client
       .from('tasks')
@@ -112,6 +130,11 @@ export class TasksService {
 
     if (query.teamId) {
       supabaseQuery = supabaseQuery.eq('team_id', query.teamId);
+    }
+
+    if (query.sprintId) {
+      this.validateUuid(query.sprintId);
+      supabaseQuery = supabaseQuery.eq('sprint_id', query.sprintId);
     }
 
     const { data, count, error } = await supabaseQuery
@@ -163,6 +186,7 @@ export class TasksService {
     this.validateUuid(id);
 
     const existing = await this.findOne(id, authHeader);
+    const client = this.getSupabaseClient(authHeader);
 
     const effectiveStartDate = dto.startDate ?? existing.startDate;
     const effectiveDueDate = dto.dueDate ?? existing.dueDate;
@@ -182,7 +206,29 @@ export class TasksService {
     if (dto.startDate !== undefined) updateData.start_date = dto.startDate;
     if (dto.dueDate !== undefined) updateData.due_date = dto.dueDate;
 
-    const client = this.getSupabaseClient(authHeader);
+    if (dto.sprintId !== undefined) {
+      if (dto.sprintId === null) {
+        updateData.sprint_id = null;
+      } else {
+        this.validateUuid(dto.sprintId);
+        const { data: sprint, error: sprintError } = await client
+          .from('sprints')
+          .select('id, project_id')
+          .eq('id', dto.sprintId)
+          .maybeSingle();
+
+        if (sprintError || !sprint) {
+          throw new BadRequestException(`Sprint with ID '${dto.sprintId}' not found`);
+        }
+
+        if (sprint.project_id !== existing.projectId) {
+          throw new BadRequestException('Sprint belongs to a different project');
+        }
+
+        updateData.sprint_id = dto.sprintId;
+      }
+    }
+
     const { data, error } = await client
       .from('tasks')
       .update(updateData)
@@ -362,6 +408,7 @@ export class TasksService {
       priority: row.priority,
       assigneeId: row.assignee_id ?? null,
       teamId: row.team_id ?? null,
+      sprintId: row.sprint_id ?? null,
       creatorId: row.creator_id ?? null,
       startDate: row.start_date ?? null,
       dueDate: row.due_date ?? null,

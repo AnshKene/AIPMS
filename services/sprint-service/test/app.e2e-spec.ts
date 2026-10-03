@@ -106,6 +106,86 @@ describe('Sprint Service (e2e)', () => {
 
       expect(response.body.statusCode).toBe(400);
     });
+
+    it('should reject requests missing project_id', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/api/sprints')
+        .send({
+          name: 'Test Sprint',
+          start_date: '2026-10-17T00:00:00.000Z',
+          end_date: '2026-10-31T00:00:00.000Z',
+        })
+        .expect(400);
+
+      expect(response.body.statusCode).toBe(400);
+      expect(response.body.message).toEqual(
+        expect.arrayContaining(['project_id is required', 'project_id must be a valid UUID']),
+      );
+    });
+
+    it('should reject requests with invalid project_id UUID', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/api/sprints')
+        .send({
+          project_id: 'invalid',
+          name: 'Test Sprint',
+          start_date: '2026-10-17T00:00:00.000Z',
+          end_date: '2026-10-31T00:00:00.000Z',
+        })
+        .expect(400);
+
+      expect(response.body.statusCode).toBe(400);
+      expect(response.body.message).toEqual(
+        expect.arrayContaining(['project_id must be a valid UUID']),
+      );
+    });
+
+    it('should reject requests with invalid non-ISO date formats', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/api/sprints')
+        .send({
+          project_id: projectUuid,
+          name: 'Test Sprint',
+          start_date: '17-10-2026',
+          end_date: '31-10-2026',
+        })
+        .expect(400);
+
+      expect(response.body.statusCode).toBe(400);
+      expect(response.body.message).toEqual(
+        expect.arrayContaining([
+          'start_date must be a valid ISO date string',
+          'end_date must be a valid ISO date string',
+        ]),
+      );
+    });
+
+    it('should reject requests containing unwhitelisted camelCase properties', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/api/sprints')
+        .send({
+          projectId: projectUuid,
+          name: 'Test Sprint',
+          startDate: '2026-10-17T00:00:00.000Z',
+          endDate: '2026-10-31T00:00:00.000Z',
+        })
+        .expect(400);
+
+      expect(response.body.statusCode).toBe(400);
+      expect(response.body.message).toEqual(
+        expect.arrayContaining([
+          'property projectId should not exist',
+          'property startDate should not exist',
+          'property endDate should not exist',
+          'project_id is required',
+          'project_id must be a valid UUID',
+          'start_date is required',
+          'start_date must be a valid ISO date string',
+          'end_date is required',
+          'end_date must be a valid ISO date string',
+        ]),
+      );
+    });
   });
 
   describe('GET /api/sprints', () => {
