@@ -26,6 +26,7 @@ export type TaskPriority = (typeof TASK_PRIORITIES)[number];
 export interface Task {
   id: string;
   projectId: string;
+  sprintId?: string | null;
   title: string;
   description: string | null;
   status: TaskStatus;
@@ -67,6 +68,7 @@ export interface ListTasksParams {
   page?: number;
   limit?: number;
   projectId?: string;
+  sprintId?: string;
   status?: TaskStatus | '';
   priority?: TaskPriority | '';
   assigneeId?: string;
@@ -75,6 +77,7 @@ export interface ListTasksParams {
 
 export interface CreateTaskPayload {
   projectId: string;
+  sprintId?: string | null;
   title: string;
   description?: string;
   status?: TaskStatus;
@@ -86,6 +89,7 @@ export interface CreateTaskPayload {
 }
 
 export interface UpdateTaskPayload {
+  sprintId?: string | null;
   title?: string;
   description?: string;
   status?: TaskStatus;
@@ -108,6 +112,7 @@ export async function listTasks(params: ListTasksParams = {}): Promise<TaskListR
     limit: params.limit,
   };
   if (params.projectId) queryParams.projectId = params.projectId;
+  if (params.sprintId) queryParams.sprintId = params.sprintId;
   if (params.status) queryParams.status = params.status;
   if (params.priority) queryParams.priority = params.priority;
   if (params.assigneeId) queryParams.assigneeId = params.assigneeId;

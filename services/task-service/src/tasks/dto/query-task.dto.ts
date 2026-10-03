@@ -43,4 +43,9 @@ export class QueryTaskDto {
   @IsOptional()
   @IsUUID('4')
   teamId?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by sprint UUID' })
+  @IsOptional()
+  @IsUUID('4')
+  sprintId?: string;
 }

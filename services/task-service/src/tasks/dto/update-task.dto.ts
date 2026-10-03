@@ -68,6 +68,14 @@ export class UpdateTaskDto {
   teamId?: string;
 
   @ApiPropertyOptional({
+    example: 'f1b2c3d4-5678-90ab-cdef-1234567890ab',
+    description: 'Updated sprint UUID (pass null to remove task from sprint)',
+    nullable: true,
+  })
+  @IsOptional()
+  sprintId?: string | null;
+
+  @ApiPropertyOptional({
     example: '2026-09-26T00:00:00.000Z',
     description: 'Updated start date (ISO 8601)',
   })

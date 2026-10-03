@@ -79,6 +79,14 @@ export class CreateTaskDto {
   teamId?: string;
 
   @ApiPropertyOptional({
+    example: 'f1b2c3d4-5678-90ab-cdef-1234567890ab',
+    description: 'Associated sprint UUID',
+  })
+  @IsOptional()
+  @IsUUID('4', { message: 'sprintId must be a valid UUID' })
+  sprintId?: string;
+
+  @ApiPropertyOptional({
     example: '2026-09-26T00:00:00.000Z',
     description: 'Task start date (ISO 8601)',
   })
