@@ -1,6 +1,10 @@
+'use client';
+
+import * as React from 'react';
 import { AppShell } from '@/components/layout/AppShell';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   FolderKanban,
   CheckSquare,
@@ -11,15 +15,220 @@ import {
   ArrowUpRight,
   Clock,
   Layers,
+  RefreshCw,
+  AlertCircle,
+  Plus,
 } from 'lucide-react';
 import Link from 'next/link';
+import { listProjects, type Project } from '@/lib/api/projects';
+import { reportsApi } from '@/lib/api/reports';
+
+interface AggregatedMetrics {
+  totalProjects: number;
+  activeProjects: number;
+  totalTasks: number;
+  completedTasks: number;
+  pendingTasks: number;
+  overdueTasks: number;
+  totalSprints: number;
+  activeSprints: number;
+  totalRisks: number;
+  openRisks: number;
+  highScoreRisks: number;
+}
 
 export default function DashboardPage() {
+  const [projects, setProjects] = React.useState<Project[]>([]);
+  const [metrics, setMetrics] = React.useState<AggregatedMetrics | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const loadDashboardData = React.useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const projectsRes = await listProjects({ limit: 100 });
+      const projectList = projectsRes.data ?? [];
+      setProjects(projectList);
+
+      if (projectList.length === 0) {
+        setMetrics({
+          totalProjects: 0,
+          activeProjects: 0,
+          totalTasks: 0,
+          completedTasks: 0,
+          pendingTasks: 0,
+          overdueTasks: 0,
+          totalSprints: 0,
+          activeSprints: 0,
+          totalRisks: 0,
+          openRisks: 0,
+          highScoreRisks: 0,
+        });
+        return;
+      }
+
+      const activeProjectsCount = projectList.filter((p) => p.status === 'ACTIVE').length;
+
+      // Fetch overview reports for accessible projects
+      const reportPromises = projectList.map((p) =>
+        reportsApi.getProjectOverview(p.id).catch(() => null),
+      );
+
+      const reports = await Promise.all(reportPromises);
+
+      let totalTasks = 0;
+      let completedTasks = 0;
+      let pendingTasks = 0;
+      let overdueTasks = 0;
+      let totalSprints = 0;
+      let activeSprints = 0;
+      let totalRisks = 0;
+      let openRisks = 0;
+      let highScoreRisks = 0;
+
+      for (const rep of reports) {
+        if (!rep) continue;
+        totalTasks += rep.tasks?.totalTasks ?? rep.tasks?.total ?? 0;
+        completedTasks += rep.tasks?.completedTasks ?? rep.tasks?.done ?? 0;
+        pendingTasks += rep.tasks?.pendingTasks ?? 0;
+        overdueTasks += rep.tasks?.overdue ?? 0;
+
+        totalSprints += rep.sprints?.totalSprints ?? rep.sprints?.total ?? 0;
+        activeSprints += rep.sprints?.activeSprints ?? rep.sprints?.active ?? 0;
+
+        totalRisks += rep.risks?.totalRisks ?? rep.risks?.total ?? 0;
+        openRisks += rep.risks?.openRisks ?? rep.risks?.open ?? 0;
+        if ((rep.risks?.averageScore ?? 0) >= 6) {
+          highScoreRisks++;
+        }
+      }
+
+      setMetrics({
+        totalProjects: projectList.length,
+        activeProjects: activeProjectsCount,
+        totalTasks,
+        completedTasks,
+        pendingTasks,
+        overdueTasks,
+        totalSprints,
+        activeSprints,
+        totalRisks,
+        openRisks,
+        highScoreRisks,
+      });
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : 'Failed to load executive dashboard data from API Gateway.';
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    let active = true;
+    listProjects({ limit: 100 })
+      .then(async (projectsRes) => {
+        if (!active) return;
+        const projectList = projectsRes.data ?? [];
+        setProjects(projectList);
+
+        if (projectList.length === 0) {
+          setMetrics({
+            totalProjects: 0,
+            activeProjects: 0,
+            totalTasks: 0,
+            completedTasks: 0,
+            pendingTasks: 0,
+            overdueTasks: 0,
+            totalSprints: 0,
+            activeSprints: 0,
+            totalRisks: 0,
+            openRisks: 0,
+            highScoreRisks: 0,
+          });
+          setLoading(false);
+          return;
+        }
+
+        const activeProjectsCount = projectList.filter((p) => p.status === 'ACTIVE').length;
+        const reportPromises = projectList.map((p) =>
+          reportsApi.getProjectOverview(p.id).catch(() => null),
+        );
+
+        const reports = await Promise.all(reportPromises);
+        if (!active) return;
+
+        let totalTasks = 0;
+        let completedTasks = 0;
+        let pendingTasks = 0;
+        let overdueTasks = 0;
+        let totalSprints = 0;
+        let activeSprints = 0;
+        let totalRisks = 0;
+        let openRisks = 0;
+        let highScoreRisks = 0;
+
+        for (const rep of reports) {
+          if (!rep) continue;
+          totalTasks += rep.tasks?.totalTasks ?? rep.tasks?.total ?? 0;
+          completedTasks += rep.tasks?.completedTasks ?? rep.tasks?.done ?? 0;
+          pendingTasks += rep.tasks?.pendingTasks ?? 0;
+          overdueTasks += rep.tasks?.overdue ?? 0;
+
+          totalSprints += rep.sprints?.totalSprints ?? rep.sprints?.total ?? 0;
+          activeSprints += rep.sprints?.activeSprints ?? rep.sprints?.active ?? 0;
+
+          totalRisks += rep.risks?.totalRisks ?? rep.risks?.total ?? 0;
+          openRisks += rep.risks?.openRisks ?? rep.risks?.open ?? 0;
+          if ((rep.risks?.averageScore ?? 0) >= 6) {
+            highScoreRisks++;
+          }
+        }
+
+        setMetrics({
+          totalProjects: projectList.length,
+          activeProjects: activeProjectsCount,
+          totalTasks,
+          completedTasks,
+          pendingTasks,
+          overdueTasks,
+          totalSprints,
+          activeSprints,
+          totalRisks,
+          openRisks,
+          highScoreRisks,
+        });
+        setLoading(false);
+      })
+      .catch((err: unknown) => {
+        if (!active) return;
+        const msg =
+          err instanceof Error
+            ? err.message
+            : 'Failed to load executive dashboard data from API Gateway.';
+        setError(msg);
+        setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const statCards = [
     {
       title: 'Total Projects',
-      value: '--',
-      subtitle: 'No active projects yet',
+      value: loading ? '--' : String(metrics?.totalProjects ?? 0),
+      subtitle: loading
+        ? 'Loading projects...'
+        : (metrics?.totalProjects ?? 0) === 0
+          ? 'No active projects yet'
+          : `${metrics?.activeProjects ?? 0} active, ${(metrics?.totalProjects ?? 0) - (metrics?.activeProjects ?? 0)} other`,
       icon: FolderKanban,
       color: 'text-blue-600',
       bgColor: 'bg-blue-50 border-blue-100',
@@ -27,8 +236,12 @@ export default function DashboardPage() {
     },
     {
       title: 'Total Tasks',
-      value: '--',
-      subtitle: 'No tasks configured',
+      value: loading ? '--' : String(metrics?.totalTasks ?? 0),
+      subtitle: loading
+        ? 'Loading tasks...'
+        : (metrics?.totalTasks ?? 0) === 0
+          ? 'No tasks configured'
+          : `${metrics?.completedTasks ?? 0} completed • ${metrics?.pendingTasks ?? 0} pending`,
       icon: CheckSquare,
       color: 'text-emerald-600',
       bgColor: 'bg-emerald-50 border-emerald-100',
@@ -36,8 +249,12 @@ export default function DashboardPage() {
     },
     {
       title: 'Active Sprints',
-      value: '--',
-      subtitle: 'No planned sprints',
+      value: loading ? '--' : String(metrics?.activeSprints ?? 0),
+      subtitle: loading
+        ? 'Loading sprints...'
+        : (metrics?.totalSprints ?? 0) === 0
+          ? 'No planned sprints'
+          : `${metrics?.totalSprints ?? 0} total sprint iteration${(metrics?.totalSprints ?? 0) === 1 ? '' : 's'}`,
       icon: Zap,
       color: 'text-amber-600',
       bgColor: 'bg-amber-50 border-amber-100',
@@ -45,8 +262,14 @@ export default function DashboardPage() {
     },
     {
       title: 'Open Risks',
-      value: '--',
-      subtitle: 'No identified risks',
+      value: loading ? '--' : String(metrics?.openRisks ?? 0),
+      subtitle: loading
+        ? 'Loading risks...'
+        : (metrics?.totalRisks ?? 0) === 0
+          ? 'No identified risks'
+          : (metrics?.highScoreRisks ?? 0) > 0
+            ? `${metrics?.highScoreRisks} critical risk vectors (≥6)`
+            : `${metrics?.openRisks ?? 0} open, ${metrics?.totalRisks ? metrics.totalRisks - (metrics.openRisks ?? 0) : 0} mitigated/resolved`,
       icon: AlertTriangle,
       color: 'text-rose-600',
       bgColor: 'bg-rose-50 border-rose-100',
@@ -65,21 +288,75 @@ export default function DashboardPage() {
                 AIPMS Executive Overview
               </h2>
               <Badge variant="info" className="text-[10px] uppercase font-bold tracking-wider">
-                Foundation v1.0
+                Live Data Active
               </Badge>
             </div>
             <p className="text-sm text-slate-500">
-              Welcome to the AI-Based Project Management System dashboard foundation.
+              Aggregated project health, sprint velocity, task bottlenecks, and risk exposure.
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="gap-1.5 py-1.5 px-3 border-emerald-200 bg-emerald-50/50 text-emerald-800 font-medium">
+          <div className="flex items-center gap-3">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void loadDashboardData()}
+              disabled={loading}
+              className="gap-1.5"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+            <Badge
+              variant="outline"
+              className="gap-1.5 py-1.5 px-3 border-emerald-200 bg-emerald-50/50 text-emerald-800 font-medium"
+            >
               <Server className="h-3.5 w-3.5 text-emerald-600" />
               API Gateway Connected (:3000)
             </Badge>
           </div>
         </div>
+
+        {/* Error Alert */}
+        {error && (
+          <div className="flex items-center justify-between gap-3 p-4 rounded-xl border border-rose-200 bg-rose-50 text-rose-800 text-sm">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-rose-600 shrink-0" />
+              <span>{error}</span>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-rose-200 bg-white text-rose-700 hover:bg-rose-100"
+              onClick={() => void loadDashboardData()}
+            >
+              Retry
+            </Button>
+          </div>
+        )}
+
+        {/* Empty State Prompt */}
+        {!loading && projects.length === 0 && (
+          <Card className="border-dashed border-slate-300">
+            <CardContent className="flex flex-col items-center justify-center p-10 text-center space-y-3">
+              <FolderKanban className="h-10 w-10 text-slate-400" />
+              <div className="space-y-1">
+                <h3 className="text-base font-semibold text-slate-800">
+                  No Projects Configured Yet
+                </h3>
+                <p className="text-xs text-slate-500 max-w-sm">
+                  Create your first project to start tracking tasks, agile sprints, and automated risk matrix scores.
+                </p>
+              </div>
+              <Link href="/projects">
+                <Button size="sm" className="gap-1.5 mt-2">
+                  <Plus className="h-4 w-4" />
+                  Create First Project
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Overview Stat Cards Grid */}
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
@@ -133,7 +410,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <Badge variant="outline" className="text-[10px] border-slate-200 text-slate-500">
-                  Ready for Integration
+                  Foundation Active
                 </Badge>
               </div>
             </CardHeader>
@@ -141,28 +418,40 @@ export default function DashboardPage() {
               <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/50 p-6 text-center space-y-2">
                 <Clock className="h-8 w-8 text-slate-400 mx-auto mb-1" />
                 <h4 className="text-sm font-semibold text-slate-700">
-                  AI Analytics Foundation Active
+                  Multi-Service Aggregation Connected
                 </h4>
                 <p className="text-xs text-slate-500 max-w-md mx-auto">
-                  Once project records and task dependencies are created, the AI engine evaluates project bottleneck vectors, sprint velocity, and probability-impact risk scores.
+                  {projects.length > 0
+                    ? `Currently monitoring ${projects.length} project${projects.length === 1 ? '' : 's'} across tasks, sprint iterations, and risk matrices.`
+                    : 'Once project records and task dependencies are created, the system evaluates bottleneck vectors and probability-impact risk scores.'}
                 </p>
               </div>
 
               <div className="grid grid-cols-2 gap-3 pt-2 text-xs">
-                <div className="flex items-center gap-2 p-3 rounded-md bg-slate-100/70 border border-slate-200/60">
+                <Link
+                  href="/tasks"
+                  className="flex items-center gap-2 p-3 rounded-md bg-slate-50 hover:bg-slate-100 border border-slate-200/60 transition-colors"
+                >
                   <Layers className="h-4 w-4 text-blue-600 shrink-0" />
                   <div>
                     <div className="font-semibold text-slate-800">Task Service</div>
-                    <div className="text-[10px] text-slate-500">Port 3004 • Dependencies</div>
+                    <div className="text-[10px] text-slate-500">
+                      {loading ? '...' : `${metrics?.totalTasks ?? 0} Tasks • ${metrics?.overdueTasks ?? 0} Overdue`}
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-2 p-3 rounded-md bg-slate-100/70 border border-slate-200/60">
+                </Link>
+                <Link
+                  href="/risks"
+                  className="flex items-center gap-2 p-3 rounded-md bg-slate-50 hover:bg-slate-100 border border-slate-200/60 transition-colors"
+                >
                   <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
                   <div>
                     <div className="font-semibold text-slate-800">Risk Matrix</div>
-                    <div className="text-[10px] text-slate-500">Port 3006 • Impact Score</div>
+                    <div className="text-[10px] text-slate-500">
+                      {loading ? '...' : `${metrics?.openRisks ?? 0} Open Risks`}
+                    </div>
                   </div>
-                </div>
+                </Link>
               </div>
             </CardContent>
           </Card>
