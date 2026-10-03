@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Headers,
   HttpCode,
   HttpStatus,
   Param,
@@ -33,16 +34,22 @@ export class RisksController {
   @ApiOperation({ summary: 'Create a new risk (risk_score calculated automatically)' })
   @ApiCreatedResponse({ description: 'Risk created successfully' })
   @ApiBadRequestResponse({ description: 'Invalid input parameters' })
-  async create(@Body() dto: CreateRiskDto) {
-    return this.risksService.create(dto);
+  async create(
+    @Body() dto: CreateRiskDto,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return this.risksService.create(dto, authHeader);
   }
 
   @Get()
   @ApiOperation({ summary: 'List risks with optional filtering and pagination' })
   @ApiOkResponse({ description: 'Paginated list of risks' })
   @ApiBadRequestResponse({ description: 'Invalid query parameters' })
-  async findAll(@Query() query: QueryRiskDto) {
-    return this.risksService.findAll(query);
+  async findAll(
+    @Query() query: QueryRiskDto,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return this.risksService.findAll(query, authHeader);
   }
 
   @Get(':id')
@@ -51,8 +58,11 @@ export class RisksController {
   @ApiOkResponse({ description: 'Risk details' })
   @ApiNotFoundResponse({ description: 'Risk not found' })
   @ApiBadRequestResponse({ description: 'Invalid UUID format' })
-  async findOne(@Param('id') id: string) {
-    return this.risksService.findOne(id);
+  async findOne(
+    @Param('id') id: string,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return this.risksService.findOne(id, authHeader);
   }
 
   @Patch(':id')
@@ -61,8 +71,12 @@ export class RisksController {
   @ApiOkResponse({ description: 'Risk updated successfully' })
   @ApiNotFoundResponse({ description: 'Risk not found' })
   @ApiBadRequestResponse({ description: 'Invalid input parameters' })
-  async update(@Param('id') id: string, @Body() dto: UpdateRiskDto) {
-    return this.risksService.update(id, dto);
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateRiskDto,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return this.risksService.update(id, dto, authHeader);
   }
 
   @Delete(':id')
@@ -72,7 +86,10 @@ export class RisksController {
   @ApiOkResponse({ description: 'Risk deleted successfully' })
   @ApiNotFoundResponse({ description: 'Risk not found' })
   @ApiBadRequestResponse({ description: 'Invalid UUID format' })
-  async remove(@Param('id') id: string) {
-    return this.risksService.remove(id);
+  async remove(
+    @Param('id') id: string,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return this.risksService.remove(id, authHeader);
   }
 }
