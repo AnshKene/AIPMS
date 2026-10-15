@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Headers,
   HttpCode,
@@ -18,6 +19,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { AuthService } from './auth.service.js';
+import { Role } from './roles.enum.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { UpdateRoleDto } from './dto/update-role.dto.js';
@@ -124,8 +126,25 @@ export class AuthController {
   async updateUserRole(
     @Param('id') id: string,
     @Body() dto: UpdateRoleDto,
+    @Headers('authorization') authHeader?: string,
   ) {
-    return this.authService.updateUserRole(id, dto.role);
+    let requesterRole: Role | undefined;
+    let requesterId: string | undefined;
+
+    if (authHeader) {
+      const token = this.extractToken(authHeader);
+      const caller = await this.authService.getCurrentUser(token);
+      requesterRole = caller.role;
+      requesterId = caller.id;
+
+      if (caller.role !== Role.ADMIN) {
+        throw new ForbiddenException(
+          `Access Denied: Role '${caller.role}' is not authorized to update user roles. Only administrators can perform this action.`,
+        );
+      }
+    }
+
+    return this.authService.updateUserRole(id, dto.role, requesterRole, requesterId);
   }
 
   @Get('audit-logs')
