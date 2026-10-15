@@ -28,6 +28,35 @@ export class AdminService {
 
   constructor(private readonly configService: ConfigService) {}
 
+  public getServiceBaseUrl(serviceKey: string, defaultPort: number): string {
+    const envKeyMap: Record<string, string> = {
+      'api-gateway': 'GATEWAY_INTERNAL_URL',
+      'auth-service': 'AUTH_SERVICE_URL',
+      'project-service': 'PROJECT_SERVICE_URL',
+      'team-service': 'TEAM_SERVICE_URL',
+      'task-service': 'TASK_SERVICE_URL',
+      'sprint-service': 'SPRINT_SERVICE_URL',
+      'risk-service': 'RISK_SERVICE_URL',
+      'reporting-service': 'REPORTING_SERVICE_URL',
+      'ai-service': 'AI_SERVICE_URL',
+    };
+
+    const envKey = envKeyMap[serviceKey];
+    if (envKey) {
+      const configured = this.configService.get<string>(envKey);
+      if (configured && configured.trim().length > 0) {
+        return configured.trim().replace(/\/+$/, '');
+      }
+    }
+
+    if (serviceKey === 'api-gateway') {
+      const port = this.configService.get<number>('PORT', defaultPort);
+      return `http://localhost:${port}`;
+    }
+
+    return `http://localhost:${defaultPort}`;
+  }
+
   async checkAllServicesHealth(): Promise<{
     status: 'HEALTHY' | 'DEGRADED' | 'OFFLINE';
     timestamp: string;
@@ -37,7 +66,8 @@ export class AdminService {
     const timestamp = new Date().toISOString();
     const results = await Promise.allSettled(
       this.servicesMap.map(async (s) => {
-        const url = `http://localhost:${s.port}/api/health`;
+        const baseUrl = this.getServiceBaseUrl(s.service, s.port);
+        const url = `${baseUrl}/api/health`;
         const startTime = Date.now();
         try {
           const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
@@ -88,10 +118,11 @@ export class AdminService {
     const services: ServiceHealthCheckResult[] = results.map((r, i) => {
       if (r.status === 'fulfilled') return r.value;
       const s = this.servicesMap[i];
+      const baseUrl = this.getServiceBaseUrl(s.service, s.port);
       return {
         service: s.service,
         name: s.name,
-        url: `http://localhost:${s.port}/api/health`,
+        url: `${baseUrl}/api/health`,
         status: 'OFFLINE',
         latencyMs: 0,
         lastChecked: timestamp,
@@ -118,11 +149,14 @@ export class AdminService {
 
   async getAdminOverview(authHeader?: string) {
     const health = await this.checkAllServicesHealth();
+    const authUrl = this.getServiceBaseUrl('auth-service', 3001);
+    const projectUrl = this.getServiceBaseUrl('project-service', 3002);
+    const teamUrl = this.getServiceBaseUrl('team-service', 3003);
 
     // Fetch users count & roles from Auth service
     let users: { id: string; role: string; email: string }[] = [];
     try {
-      const res = await fetch('http://localhost:3001/api/auth/users', {
+      const res = await fetch(`${authUrl}/api/auth/users`, {
         headers: authHeader ? { authorization: authHeader } : {},
         signal: AbortSignal.timeout(3000),
       });
@@ -130,7 +164,7 @@ export class AdminService {
         users = await res.json();
       }
     } catch {
-      this.logger.warn('Failed to fetch user distribution for admin overview');
+      this.logger.warn(`Failed to fetch user distribution from ${authUrl}/api/auth/users`);
     }
 
     // Role breakdown calculation
@@ -149,7 +183,7 @@ export class AdminService {
     // Fetch project counts
     let projectCount = 0;
     try {
-      const res = await fetch('http://localhost:3002/api/projects?limit=100', {
+      const res = await fetch(`${projectUrl}/api/projects?limit=100`, {
         headers: authHeader ? { authorization: authHeader } : {},
         signal: AbortSignal.timeout(3000),
       });
@@ -158,13 +192,13 @@ export class AdminService {
         projectCount = Array.isArray(data) ? data.length : data.meta?.total || (data.data?.length ?? 0);
       }
     } catch {
-      this.logger.warn('Failed to fetch projects count for admin overview');
+      this.logger.warn(`Failed to fetch projects count from ${projectUrl}/api/projects`);
     }
 
     // Fetch team counts
     let teamCount = 0;
     try {
-      const res = await fetch('http://localhost:3003/api/teams?limit=100', {
+      const res = await fetch(`${teamUrl}/api/teams?limit=100`, {
         headers: authHeader ? { authorization: authHeader } : {},
         signal: AbortSignal.timeout(3000),
       });
@@ -173,13 +207,13 @@ export class AdminService {
         teamCount = Array.isArray(data) ? data.length : data.meta?.total || (data.data?.length ?? 0);
       }
     } catch {
-      this.logger.warn('Failed to fetch teams count for admin overview');
+      this.logger.warn(`Failed to fetch teams count from ${teamUrl}/api/teams`);
     }
 
     // Fetch recent audit logs from auth service
     let recentAuditLogs: unknown[] = [];
     try {
-      const res = await fetch('http://localhost:3001/api/auth/audit-logs?limit=5', {
+      const res = await fetch(`${authUrl}/api/auth/audit-logs?limit=5`, {
         headers: authHeader ? { authorization: authHeader } : {},
         signal: AbortSignal.timeout(3000),
       });
@@ -188,7 +222,7 @@ export class AdminService {
         recentAuditLogs = data.items || [];
       }
     } catch {
-      this.logger.warn('Failed to fetch audit logs for admin overview');
+      this.logger.warn(`Failed to fetch audit logs from ${authUrl}/api/auth/audit-logs`);
     }
 
     return {
@@ -207,8 +241,9 @@ export class AdminService {
   }
 
   async getAuditLogs(query: Record<string, string>, authHeader?: string) {
+    const authUrl = this.getServiceBaseUrl('auth-service', 3001);
     const searchParams = new URLSearchParams(query).toString();
-    const url = `http://localhost:3001/api/auth/audit-logs${searchParams ? `?${searchParams}` : ''}`;
+    const url = `${authUrl}/api/auth/audit-logs${searchParams ? `?${searchParams}` : ''}`;
 
     const res = await fetch(url, {
       headers: authHeader ? { authorization: authHeader } : {},
@@ -216,7 +251,7 @@ export class AdminService {
     });
 
     if (!res.ok) {
-      throw new Error(`Failed to retrieve audit logs: ${res.statusText}`);
+      throw new Error(`Failed to retrieve audit logs from downstream: ${res.statusText}`);
     }
 
     return res.json();
@@ -224,10 +259,12 @@ export class AdminService {
 
   async getWorkspaces(authHeader?: string) {
     const headers: Record<string, string> = authHeader ? { authorization: authHeader } : {};
+    const projectUrl = this.getServiceBaseUrl('project-service', 3002);
+    const teamUrl = this.getServiceBaseUrl('team-service', 3003);
 
     const [projectsRes, teamsRes] = await Promise.allSettled([
-      fetch('http://localhost:3002/api/projects?limit=100', { headers, signal: AbortSignal.timeout(4000) }),
-      fetch('http://localhost:3003/api/teams?limit=100', { headers, signal: AbortSignal.timeout(4000) }),
+      fetch(`${projectUrl}/api/projects?limit=100`, { headers, signal: AbortSignal.timeout(4000) }),
+      fetch(`${teamUrl}/api/teams?limit=100`, { headers, signal: AbortSignal.timeout(4000) }),
     ]);
 
     let rawProjects: any[] = [];

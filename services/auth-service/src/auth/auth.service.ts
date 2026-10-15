@@ -1,7 +1,9 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -28,7 +30,9 @@ export class AuthService {
   private readonly logger = new Logger(AuthService.name);
   private readonly supabaseUrl: string;
   private readonly supabaseAnonKey: string;
+  private readonly supabaseServiceRoleKey: string;
   private supabase: SupabaseClient;
+  private adminSupabase: SupabaseClient | null = null;
 
   // In-memory user role registry synchronized with auth flow
   private readonly usersMap = new Map<string, UserRecord>();
@@ -40,6 +44,8 @@ export class AuthService {
     this.supabaseUrl = this.configService.get<string>('supabase.url') ?? '';
     this.supabaseAnonKey =
       this.configService.get<string>('supabase.anonKey') ?? '';
+    this.supabaseServiceRoleKey =
+      this.configService.get<string>('supabase.serviceRoleKey') ?? '';
 
     this.supabase = createClient(this.supabaseUrl, this.supabaseAnonKey, {
       auth: {
@@ -47,6 +53,19 @@ export class AuthService {
         persistSession: false,
       },
     });
+
+    if (this.supabaseUrl && this.supabaseServiceRoleKey) {
+      try {
+        this.adminSupabase = createClient(this.supabaseUrl, this.supabaseServiceRoleKey, {
+          auth: {
+            autoRefreshToken: false,
+            persistSession: false,
+          },
+        });
+      } catch (err) {
+        this.logger.warn(`Could not initialize admin Supabase client: ${(err as Error).message}`);
+      }
+    }
 
     // Seed initial system users for RBAC testing
     this.seedInitialUsers();
@@ -221,10 +240,45 @@ export class AuthService {
   }
 
   async listUsers() {
+    if (this.adminSupabase) {
+      try {
+        const { data, error } = await this.adminSupabase.auth.admin.listUsers();
+        if (!error && data?.users) {
+          for (const u of data.users) {
+            const role =
+              (u.app_metadata?.role as Role) ||
+              (u.email?.toLowerCase() === 'admin@aipms.com' || u.email?.toLowerCase() === 'ak@gmail.com'
+                ? Role.ADMIN
+                : Role.TEAM_MEMBER);
+            const record: UserRecord = {
+              id: u.id,
+              email: u.email ?? '',
+              name: u.user_metadata?.name ?? null,
+              role,
+              createdAt: u.created_at,
+            };
+            this.usersMap.set(record.id, record);
+          }
+        }
+      } catch (err) {
+        this.logger.warn(`Could not sync users from Supabase admin: ${(err as Error).message}`);
+      }
+    }
     return Array.from(this.usersMap.values());
   }
 
-  async updateUserRole(userId: string, newRole: Role) {
+  async updateUserRole(
+    userId: string,
+    newRole: Role,
+    requesterRole?: Role,
+    requesterId?: string,
+  ) {
+    if (requesterRole !== undefined && requesterRole !== Role.ADMIN) {
+      throw new ForbiddenException(
+        `Access Denied: Role '${requesterRole}' is not authorized to update user roles. Only administrators can perform this action.`,
+      );
+    }
+
     const validRoles = Object.values(Role);
     if (!newRole || !validRoles.includes(newRole)) {
       throw new BadRequestException(
@@ -239,22 +293,81 @@ export class AuthService {
       );
     }
 
+    // If user is not found in local cache (e.g. after service restart or in another replica), check Supabase
+    if (!existing && this.adminSupabase) {
+      try {
+        const { data, error } = await this.adminSupabase.auth.admin.getUserById(userId);
+        if (!error && data?.user) {
+          const role = (data.user.app_metadata?.role as Role) || Role.TEAM_MEMBER;
+          existing = {
+            id: data.user.id,
+            email: data.user.email ?? '',
+            name: data.user.user_metadata?.name ?? null,
+            role,
+            createdAt: data.user.created_at,
+          };
+          this.usersMap.set(existing.id, existing);
+        }
+      } catch (err) {
+        this.logger.warn(`Could not fetch user ${userId} from Supabase: ${(err as Error).message}`);
+      }
+    }
+
     if (!existing) {
       throw new BadRequestException(`User with ID '${userId}' not found`);
     }
 
     // Protect against accidental demotion of the last active administrator
     if (existing.role === Role.ADMIN && newRole !== Role.ADMIN) {
-      const activeAdmins = Array.from(new Set(Array.from(this.usersMap.values()))).filter(
-        (u) => u.role === Role.ADMIN,
-      );
+      let activeAdminsCount = 0;
+      if (this.adminSupabase) {
+        try {
+          const { data } = await this.adminSupabase.auth.admin.listUsers();
+          if (data?.users) {
+            activeAdminsCount = data.users.filter(
+              (u) =>
+                u.app_metadata?.role === Role.ADMIN ||
+                u.email?.toLowerCase() === 'admin@aipms.com' ||
+                u.email?.toLowerCase() === 'ak@gmail.com',
+            ).length;
+          }
+        } catch {
+          // Fall back to local map count
+        }
+      }
+      if (activeAdminsCount === 0) {
+        const activeAdmins = Array.from(new Set(Array.from(this.usersMap.values()))).filter(
+          (u) => u.role === Role.ADMIN,
+        );
+        activeAdminsCount = activeAdmins.length;
+      }
 
-      if (activeAdmins.length <= 1) {
+      if (activeAdminsCount <= 1) {
         throw new BadRequestException('Cannot demote the last active administrator');
       }
     }
 
     const previousRole = existing.role;
+
+    // Persist role change durably to Supabase Auth app_metadata if admin client is configured
+    if (this.adminSupabase) {
+      const { error: updateError } = await this.adminSupabase.auth.admin.updateUserById(
+        existing.id,
+        {
+          app_metadata: { role: newRole },
+        },
+      );
+
+      if (updateError) {
+        this.logger.error(
+          `Failed to persist role change to Supabase app_metadata for user ${existing.id}: ${updateError.message}`,
+        );
+        throw new InternalServerErrorException(
+          `Failed to persist role change securely: ${updateError.message}`,
+        );
+      }
+    }
+
     existing.role = newRole;
     this.usersMap.set(existing.id, existing);
     if (existing.email) {
@@ -262,7 +375,7 @@ export class AuthService {
     }
 
     await this.auditService.recordEvent({
-      actorId: 'admin-user-001',
+      actorId: requesterId ?? 'admin-user-001',
       actorEmail: 'admin@aipms.com',
       action: 'ROLE_ASSIGNED',
       targetResource: existing.id,

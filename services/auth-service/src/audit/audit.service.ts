@@ -27,13 +27,20 @@ export class AuditService {
 
   constructor(private readonly configService: ConfigService) {
     const supabaseUrl = this.configService.get<string>('supabase.url');
-    const supabaseKey =
-      this.configService.get<string>('supabase.serviceRoleKey') ||
-      this.configService.get<string>('supabase.anonKey');
+    const serviceRoleKey = this.configService.get<string>('supabase.serviceRoleKey');
+    const anonKey = this.configService.get<string>('supabase.anonKey');
 
-    if (supabaseUrl && supabaseKey) {
+    if (!serviceRoleKey) {
+      this.logger.warn(
+        'SUPABASE_SERVICE_ROLE_KEY is not configured for AuditService. Audit writes may be rejected by Supabase RLS policies.',
+      );
+    }
+
+    const keyToUse = serviceRoleKey || anonKey;
+
+    if (supabaseUrl && keyToUse) {
       try {
-        this.supabase = createClient(supabaseUrl, supabaseKey);
+        this.supabase = createClient(supabaseUrl, keyToUse);
       } catch (err) {
         this.logger.warn(`Could not initialize Supabase audit client: ${(err as Error).message}`);
       }
@@ -117,7 +124,7 @@ export class AuditService {
     // Attempt durable database write if Supabase client available
     if (this.supabase) {
       try {
-        await this.supabase.from('audit_logs').insert([
+        const { error } = await this.supabase.from('audit_logs').insert([
           {
             id: record.id,
             actor_id: record.actorId,
@@ -131,8 +138,14 @@ export class AuditService {
             created_at: record.timestamp,
           },
         ]);
+
+        if (error) {
+          this.logger.error(
+            `Failed server-side audit write to database: ${error.message} (code: ${error.code ?? 'unknown'})`,
+          );
+        }
       } catch (err) {
-        this.logger.warn(`Failed server-side audit write to database: ${(err as Error).message}`);
+        this.logger.error(`Exception during server-side audit write: ${(err as Error).message}`);
       }
     }
 

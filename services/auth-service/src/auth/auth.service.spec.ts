@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
+  InternalServerErrorException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { describe, beforeEach, it, expect, vi } from 'vitest';
@@ -283,6 +285,205 @@ describe('AuthService', () => {
       // Now demoting admin-user-001 should succeed since member-user-003 is also an ADMIN
       const demoted = await service.updateUserRole('admin-user-001', Role.PROJECT_MANAGER);
       expect(demoted.role).toBe(Role.PROJECT_MANAGER);
+    });
+
+    it('should persist role changes durably to Supabase app_metadata via admin client', async () => {
+      const mockUpdateUserById = vi.fn().mockResolvedValue({ error: null });
+      (service as any).adminSupabase = {
+        auth: {
+          admin: {
+            updateUserById: mockUpdateUserById,
+          },
+        },
+      };
+
+      const result = await service.updateUserRole('member-user-003', Role.PROJECT_MANAGER);
+      expect(result.role).toBe(Role.PROJECT_MANAGER);
+      expect(mockUpdateUserById).toHaveBeenCalledWith('member-user-003', {
+        app_metadata: { role: Role.PROJECT_MANAGER },
+      });
+    });
+
+    it('should fail safely when Supabase role persistence fails and NOT alter local user role', async () => {
+      const mockUpdateUserById = vi.fn().mockResolvedValue({
+        error: { message: 'Database connection failed' },
+      });
+      (service as any).adminSupabase = {
+        auth: {
+          admin: {
+            updateUserById: mockUpdateUserById,
+          },
+        },
+      };
+
+      // Attempting to promote member-user-003 to ADMIN when DB write fails
+      await expect(
+        service.updateUserRole('member-user-003', Role.ADMIN),
+      ).rejects.toThrow(InternalServerErrorException);
+
+      // Ensure permissions were not silently granted
+      const allUsers = await service.listUsers();
+      const target = allUsers.find((u) => u.id === 'member-user-003');
+      expect(target?.role).toBe(Role.TEAM_MEMBER);
+    });
+
+    it('should reject unauthorized role changes when requester is not an administrator', async () => {
+      await expect(
+        service.updateUserRole('member-user-003', Role.ADMIN, Role.TEAM_MEMBER),
+      ).rejects.toThrow(ForbiddenException);
+
+      await expect(
+        service.updateUserRole('member-user-003', Role.ADMIN, Role.VIEWER),
+      ).rejects.toThrow(ForbiddenException);
+
+      await expect(
+        service.updateUserRole('member-user-003', Role.ADMIN, Role.PROJECT_MANAGER),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should allow authorized role changes when requester is an administrator', async () => {
+      const result = await service.updateUserRole(
+        'member-user-003',
+        Role.PROJECT_MANAGER,
+        Role.ADMIN,
+        'admin-user-001',
+      );
+      expect(result.role).toBe(Role.PROJECT_MANAGER);
+    });
+  });
+
+  describe('security: client metadata spoofing & restart survival', () => {
+    it('should ignore client-editable user_metadata when determining role during login', async () => {
+      const mockSignIn = vi.fn().mockResolvedValue({
+        data: {
+          session: {
+            access_token: 'spoof-token',
+            refresh_token: 'spoof-refresh',
+            expires_at: 1700000000,
+          },
+          user: {
+            id: 'untrusted-client-user',
+            email: 'untrusted@example.com',
+            user_metadata: { name: 'Attacker', role: 'ADMIN' }, // Spoofed client metadata
+            app_metadata: {}, // Authoritative app_metadata lacks admin role
+          },
+        },
+        error: null,
+      });
+      (service as any).supabase = {
+        auth: { signInWithPassword: mockSignIn },
+      };
+
+      const result = await service.login({
+        email: 'untrusted@example.com',
+        password: 'password123',
+      });
+
+      // Role must strictly be TEAM_MEMBER, never elevated to ADMIN from user_metadata
+      expect(result.user.role).toBe(Role.TEAM_MEMBER);
+    });
+
+    it('should ignore client-editable user_metadata in getCurrentUser and rely on app_metadata', async () => {
+      const mockGetUser = vi.fn().mockResolvedValue({
+        data: {
+          user: {
+            id: 'untrusted-client-user-2',
+            email: 'viewer-user@example.com',
+            user_metadata: { name: 'Viewer Spoofing Admin', role: 'ADMIN' }, // Spoofed
+            app_metadata: { role: Role.VIEWER }, // Trusted server-side role
+            created_at: '2026-09-25T20:00:00.000Z',
+          },
+        },
+        error: null,
+      });
+      (service as any).supabase = {
+        auth: { getUser: mockGetUser },
+      };
+
+      const result = await service.getCurrentUser('valid-viewer-token');
+      expect(result.role).toBe(Role.VIEWER);
+    });
+
+    it('should survive service restart and retrieve role from persistent app_metadata', async () => {
+      // Simulate a brand new service instance (restart / separate replica) without prior in-memory state
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          AuthService,
+          {
+            provide: ConfigService,
+            useValue: mockConfigService,
+          },
+          {
+            provide: AuditService,
+            useValue: mockAuditService,
+          },
+        ],
+      }).compile();
+
+      const restartedService = module.get<AuthService>(AuthService);
+
+      const mockGetUser = vi.fn().mockResolvedValue({
+        data: {
+          user: {
+            id: 'new-replica-user',
+            email: 'replica-admin@example.com',
+            user_metadata: { name: 'Replica User' },
+            app_metadata: { role: Role.ADMIN }, // Persisted in Supabase
+            created_at: '2026-09-25T20:00:00.000Z',
+          },
+        },
+        error: null,
+      });
+      (restartedService as any).supabase = {
+        auth: { getUser: mockGetUser },
+      };
+
+      const result = await restartedService.getCurrentUser('replica-token');
+      expect(result.role).toBe(Role.ADMIN);
+      expect(result.id).toBe('new-replica-user');
+    });
+
+    it('should synchronize durable user roles across replicas from Supabase admin listUsers', async () => {
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          AuthService,
+          {
+            provide: ConfigService,
+            useValue: mockConfigService,
+          },
+          {
+            provide: AuditService,
+            useValue: mockAuditService,
+          },
+        ],
+      }).compile();
+
+      const newReplica = module.get<AuthService>(AuthService);
+      (newReplica as any).adminSupabase = {
+        auth: {
+          admin: {
+            listUsers: vi.fn().mockResolvedValue({
+              data: {
+                users: [
+                  {
+                    id: 'replica-persisted-pm',
+                    email: 'persistedpm@aipms.com',
+                    user_metadata: { name: 'Persisted PM' },
+                    app_metadata: { role: Role.PROJECT_MANAGER },
+                    created_at: new Date().toISOString(),
+                  },
+                ],
+              },
+              error: null,
+            }),
+          },
+        },
+      };
+
+      const allUsers = await newReplica.listUsers();
+      const syncedUser = allUsers.find((u) => u.id === 'replica-persisted-pm');
+      expect(syncedUser).toBeDefined();
+      expect(syncedUser?.role).toBe(Role.PROJECT_MANAGER);
     });
   });
 });

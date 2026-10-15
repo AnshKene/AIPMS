@@ -5,5 +5,6 @@ export default () => ({
   supabase: {
     url: process.env.SUPABASE_URL ?? 'https://dummy.supabase.co',
     anonKey: process.env.SUPABASE_ANON_KEY ?? 'dummy-anon-key',
+    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
   },
 });
