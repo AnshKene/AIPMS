@@ -9,7 +9,7 @@ import {
   removeTaskDependency,
   type TaskDependency,
 } from '@/lib/api/tasks';
-import { Loader2, Plus, Trash2, ExternalLink } from 'lucide-react';
+import { Loader2, Plus, Trash2, GitPullRequest } from 'lucide-react';
 
 interface TaskDependenciesProps {
   taskId: string;
@@ -47,13 +47,26 @@ export function TaskDependencies({ taskId }: TaskDependenciesProps) {
     }
 
     fetchDeps();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [taskId]);
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     const depId = addInput.trim();
     if (!depId) return;
+
+    if (depId === taskId) {
+      setAddError('A task cannot depend on itself.');
+      return;
+    }
+
+    if (deps.some((d) => d.dependsOnTaskId === depId)) {
+      setAddError('This dependency already exists.');
+      return;
+    }
+
     setAddError(null);
     setAdding(true);
     try {
@@ -73,7 +86,7 @@ export function TaskDependencies({ taskId }: TaskDependenciesProps) {
       await removeTaskDependency(taskId, dep.id);
       setDeps((prev) => prev.filter((d) => d.id !== dep.id));
     } catch {
-      // fail silently for now — could show a toast in a future iteration
+      // fail silently
     } finally {
       setRemoving(null);
     }
@@ -89,54 +102,64 @@ export function TaskDependencies({ taskId }: TaskDependenciesProps) {
       )}
 
       {!loading && error && (
-        <p className="text-xs text-red-600">{error}</p>
+        <p className="text-xs text-red-600 dark:text-red-400 font-medium">{error}</p>
       )}
 
       {!loading && !error && deps.length === 0 && (
-        <p className="text-xs text-slate-400">No dependencies yet.</p>
+        <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 p-3 text-center">
+          <p className="text-xs text-slate-400 dark:text-slate-500">No task dependencies linked.</p>
+        </div>
       )}
 
       {!loading && deps.length > 0 && (
-        <ul className="space-y-1.5" aria-label="Task dependencies">
-          {deps.map((dep) => (
-            <li
-              key={dep.id}
-              className="flex items-center justify-between gap-2 rounded-md border border-slate-100 bg-slate-50 px-3 py-2"
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                <ExternalLink className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                <span className="truncate font-mono text-xs text-slate-600">
-                  {dep.dependsOnTaskId}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleRemove(dep)}
-                disabled={removing === dep.id}
-                aria-label="Remove dependency"
-                className="shrink-0 rounded p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-40"
+        <div className="space-y-2">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+            Blocked By ({deps.length})
+          </p>
+          <ul className="space-y-1.5" aria-label="Task dependencies">
+            {deps.map((dep) => (
+              <li
+                key={dep.id}
+                className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 px-3 py-2 text-xs"
               >
-                {removing === dep.id ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Trash2 className="h-3.5 w-3.5" />
-                )}
-              </button>
-            </li>
-          ))}
-        </ul>
+                <div className="flex items-center gap-2 min-w-0">
+                  <GitPullRequest className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                  <span className="font-mono text-xs text-slate-700 dark:text-slate-300 truncate">
+                    {dep.dependsOnTaskId}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleRemove(dep)}
+                  disabled={removing === dep.id}
+                  aria-label="Remove dependency"
+                  className="shrink-0 rounded p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors disabled:opacity-40"
+                >
+                  {removing === dep.id ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
-      {/* Add dependency */}
-      <form onSubmit={handleAdd} className="space-y-2">
+      {/* Add dependency form */}
+      <form onSubmit={handleAdd} className="space-y-2 pt-1">
         <div className="flex items-center gap-2">
           <Input
             value={addInput}
-            onChange={(e) => setAddInput(e.target.value)}
-            placeholder="Depends-on task UUID"
+            onChange={(e) => {
+              setAddInput(e.target.value);
+              if (addError) setAddError(null);
+            }}
+            placeholder="Prerequisite Task UUID..."
             disabled={adding}
-            className="text-xs h-8"
-            aria-label="Dependency task UUID"
+            className="text-xs h-8 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"
+            aria-label="Prerequisite Task UUID"
           />
           <Button
             type="submit"
@@ -150,11 +173,11 @@ export function TaskDependencies({ taskId }: TaskDependenciesProps) {
             ) : (
               <Plus className="h-3.5 w-3.5" />
             )}
-            Add
+            Link
           </Button>
         </div>
         {addError && (
-          <p role="alert" className="text-xs text-red-600">
+          <p role="alert" className="text-xs text-red-600 dark:text-red-400 font-medium">
             {addError}
           </p>
         )}

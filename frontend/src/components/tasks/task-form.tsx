@@ -18,8 +18,8 @@ import {
   type CreateTaskPayload,
   type UpdateTaskPayload,
 } from '@/lib/api/tasks';
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+import { listProjects, type Project } from '@/lib/api/projects';
+import { listSprints, type Sprint } from '@/lib/api/sprints';
 
 const STATUS_LABELS: Record<TaskStatus, string> = {
   TODO: 'Todo',
@@ -47,19 +47,15 @@ function toISOString(d: string): string | undefined {
 }
 
 const SELECT_CLASS =
-  'flex h-9 w-full rounded-md border border-slate-300 bg-white px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:border-transparent disabled:cursor-not-allowed disabled:opacity-50';
+  'flex h-9 w-full rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-1 text-sm text-slate-900 dark:text-slate-100 shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 disabled:cursor-not-allowed disabled:opacity-50';
 
 const TEXTAREA_CLASS =
-  'flex w-full rounded-md border border-slate-300 bg-transparent px-3 py-2 text-sm shadow-xs transition-colors placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:border-transparent disabled:cursor-not-allowed disabled:opacity-50 resize-none';
-
-// ─── Types ────────────────────────────────────────────────────────────────────
+  'flex w-full rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 shadow-xs transition-colors placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 disabled:cursor-not-allowed disabled:opacity-50 resize-none';
 
 type BaseTaskFormProps = {
-  /** Available for create mode — pre-fill project */
   defaultProjectId?: string;
-  /** Render the trigger element */
+  defaultSprintId?: string;
   trigger: React.ReactNode;
-  /** Called after successful submission */
   onSuccess: (task: Task) => void;
 };
 
@@ -80,6 +76,7 @@ export type TaskFormProps = CreateTaskFormProps | EditTaskFormProps;
 interface FormState {
   title: string;
   projectId: string;
+  sprintId: string;
   description: string;
   status: TaskStatus;
   priority: TaskPriority;
@@ -89,19 +86,22 @@ interface FormState {
   dueDate: string;
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
 export function TaskForm(props: TaskFormProps) {
-  const { mode, defaultProjectId, task, trigger, onSuccess } = props;
+  const { mode, defaultProjectId, defaultSprintId, task, trigger, onSuccess } = props;
   const [open, setOpen] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [showMore, setShowMore] = React.useState(false);
 
+  // External project & sprint lookup
+  const [projects, setProjects] = React.useState<Project[]>([]);
+  const [sprints, setSprints] = React.useState<Sprint[]>([]);
+
   const initialState = React.useCallback(
     (): FormState => ({
       title: task?.title ?? '',
       projectId: task?.projectId ?? defaultProjectId ?? '',
+      sprintId: task?.sprintId ?? defaultSprintId ?? '',
       description: task?.description ?? '',
       status: task?.status ?? 'TODO',
       priority: task?.priority ?? 'MEDIUM',
@@ -110,10 +110,40 @@ export function TaskForm(props: TaskFormProps) {
       startDate: toDateInput(task?.startDate),
       dueDate: toDateInput(task?.dueDate),
     }),
-    [task, defaultProjectId],
+    [task, defaultProjectId, defaultSprintId],
   );
 
   const [form, setForm] = React.useState<FormState>(initialState);
+
+  // Fetch projects and sprints when sheet opens
+  React.useEffect(() => {
+    if (!open) return;
+    let isCancelled = false;
+
+    async function loadOptions() {
+      try {
+        const [projRes, sprintRes] = await Promise.allSettled([
+          listProjects({ limit: 100 }),
+          listSprints({ limit: 100 }),
+        ]);
+
+        if (isCancelled) return;
+        if (projRes.status === 'fulfilled') {
+          setProjects(projRes.value.data);
+        }
+        if (sprintRes.status === 'fulfilled') {
+          setSprints(sprintRes.value);
+        }
+      } catch {
+        // fail silently for optional dropdowns
+      }
+    }
+
+    loadOptions();
+    return () => {
+      isCancelled = true;
+    };
+  }, [open]);
 
   const handleOpenChange = React.useCallback(
     (next: boolean) => {
@@ -147,7 +177,7 @@ export function TaskForm(props: TaskFormProps) {
       return;
     }
     if (mode === 'create' && !form.projectId.trim()) {
-      setError('Project ID is required.');
+      setError('Project selection or ID is required.');
       return;
     }
     if (form.startDate && form.dueDate && new Date(form.dueDate) < new Date(form.startDate)) {
@@ -161,6 +191,7 @@ export function TaskForm(props: TaskFormProps) {
       if (props.mode === 'create') {
         const createPayload: CreateTaskPayload = {
           projectId: form.projectId.trim(),
+          sprintId: form.sprintId.trim() || undefined,
           title: form.title.trim(),
           description: form.description.trim() || undefined,
           status: form.status,
@@ -173,6 +204,7 @@ export function TaskForm(props: TaskFormProps) {
         result = await props.onSubmit(createPayload);
       } else {
         const updatePayload: UpdateTaskPayload = {
+          sprintId: form.sprintId.trim() || undefined,
           title: form.title.trim(),
           description: form.description.trim() || undefined,
           status: form.status,
@@ -196,80 +228,155 @@ export function TaskForm(props: TaskFormProps) {
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetTrigger asChild>{trigger}</SheetTrigger>
-      <SheetContent className="w-full max-w-md overflow-y-auto">
-        <div className="mb-6">
-          <h2 className="text-lg font-bold text-slate-900">
-            {mode === 'create' ? 'New Task' : 'Edit Task'}
+      <SheetContent className="w-full max-w-md overflow-y-auto bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+        <div className="mb-6 space-y-1">
+          <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
+            {mode === 'create' ? 'Create Task' : 'Edit Task'}
           </h2>
-          <p className="text-sm text-slate-500 mt-0.5">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
             {mode === 'create'
-              ? 'Create a task and start tracking project work.'
-              : 'Update the task details below.'}
+              ? 'Plan, assign, and configure new work items.'
+              : 'Update task properties and schedule.'}
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           {/* Title */}
           <div className="space-y-1.5">
-            <label htmlFor="task-title" className="block text-sm font-medium text-slate-700">
-              Title <span className="text-red-500">*</span>
+            <label htmlFor="task-title" className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+              Task Title <span className="text-rose-500">*</span>
             </label>
             <Input
               id="task-title"
               name="title"
               value={form.title}
               onChange={handleChange}
-              placeholder="Task title"
+              placeholder="e.g. Implement payment gateway API"
               maxLength={255}
               disabled={submitting}
               autoFocus
               required
+              className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-sm"
             />
           </div>
 
-          {/* Project ID (create only) */}
+          {/* Project (create mode) */}
           {mode === 'create' && (
             <div className="space-y-1.5">
-              <label htmlFor="task-project" className="block text-sm font-medium text-slate-700">
-                Project ID <span className="text-red-500">*</span>
+              <label htmlFor="task-project" className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+                Project <span className="text-rose-500">*</span>
               </label>
-              <Input
-                id="task-project"
-                name="projectId"
-                value={form.projectId}
-                onChange={handleChange}
-                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                disabled={submitting}
-                required
-              />
-              <p className="text-[11px] text-slate-400">Paste the UUID of the target project.</p>
+              {projects.length > 0 ? (
+                <select
+                  id="task-project"
+                  name="projectId"
+                  value={form.projectId}
+                  onChange={handleChange}
+                  disabled={submitting}
+                  className={SELECT_CLASS}
+                >
+                  <option value="">Select a project...</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <Input
+                  id="task-project"
+                  name="projectId"
+                  value={form.projectId}
+                  onChange={handleChange}
+                  placeholder="Target Project UUID"
+                  disabled={submitting}
+                  required
+                  className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-sm"
+                />
+              )}
             </div>
           )}
 
-          {/* Priority */}
+          {/* Sprint */}
           <div className="space-y-1.5">
-            <label htmlFor="task-priority" className="block text-sm font-medium text-slate-700">
-              Priority
+            <label htmlFor="task-sprint" className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+              Sprint
             </label>
-            <select
-              id="task-priority"
-              name="priority"
-              value={form.priority}
-              onChange={handleChange}
-              disabled={submitting}
-              className={SELECT_CLASS}
-            >
-              {TASK_PRIORITIES.map((p) => (
-                <option key={p} value={p}>
-                  {PRIORITY_LABELS[p]}
-                </option>
-              ))}
-            </select>
+            {sprints.length > 0 ? (
+              <select
+                id="task-sprint"
+                name="sprintId"
+                value={form.sprintId}
+                onChange={handleChange}
+                disabled={submitting}
+                className={SELECT_CLASS}
+              >
+                <option value="">No sprint assigned</option>
+                {sprints.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} ({s.status})
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <Input
+                id="task-sprint"
+                name="sprintId"
+                value={form.sprintId}
+                onChange={handleChange}
+                placeholder="Sprint UUID (optional)"
+                disabled={submitting}
+                className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-sm"
+              />
+            )}
+          </div>
+
+          {/* Priority & Status Grid */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label htmlFor="task-priority" className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+                Priority
+              </label>
+              <select
+                id="task-priority"
+                name="priority"
+                value={form.priority}
+                onChange={handleChange}
+                disabled={submitting}
+                className={SELECT_CLASS}
+              >
+                {TASK_PRIORITIES.map((p) => (
+                  <option key={p} value={p}>
+                    {PRIORITY_LABELS[p]}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="task-status" className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+                Status
+              </label>
+              <select
+                id="task-status"
+                name="status"
+                value={form.status}
+                onChange={handleChange}
+                disabled={submitting}
+                className={SELECT_CLASS}
+              >
+                {TASK_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {STATUS_LABELS[s]}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* Due Date */}
           <div className="space-y-1.5">
-            <label htmlFor="task-due-date" className="block text-sm font-medium text-slate-700">
+            <label htmlFor="task-due-date" className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
               Due Date
             </label>
             <Input
@@ -279,25 +386,26 @@ export function TaskForm(props: TaskFormProps) {
               value={form.dueDate}
               onChange={handleChange}
               disabled={submitting}
+              className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-sm"
             />
           </div>
 
-          {/* More options toggle */}
+          {/* More Options Toggle */}
           <button
             type="button"
             onClick={() => setShowMore((v) => !v)}
-            className="text-xs font-medium text-blue-600 hover:text-blue-700 hover:underline focus:outline-none"
+            className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline focus:outline-none"
           >
-            {showMore ? '− Fewer options' : '+ More options'}
+            {showMore ? '− Hide additional options' : '+ Show description & assignment'}
           </button>
 
           {showMore && (
-            <div className="space-y-4 pt-1">
+            <div className="space-y-4 pt-2 border-t border-slate-100 dark:border-slate-800">
               {/* Description */}
               <div className="space-y-1.5">
                 <label
                   htmlFor="task-description"
-                  className="block text-sm font-medium text-slate-700"
+                  className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400"
                 >
                   Description
                 </label>
@@ -306,41 +414,20 @@ export function TaskForm(props: TaskFormProps) {
                   name="description"
                   value={form.description}
                   onChange={handleChange}
-                  placeholder="Optional description"
+                  placeholder="Task requirements, details, or context..."
                   disabled={submitting}
                   rows={3}
                   className={TEXTAREA_CLASS}
                 />
               </div>
 
-              {/* Status */}
-              <div className="space-y-1.5">
-                <label htmlFor="task-status" className="block text-sm font-medium text-slate-700">
-                  Status
-                </label>
-                <select
-                  id="task-status"
-                  name="status"
-                  value={form.status}
-                  onChange={handleChange}
-                  disabled={submitting}
-                  className={SELECT_CLASS}
-                >
-                  {TASK_STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {STATUS_LABELS[s]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
               {/* Assignee ID */}
               <div className="space-y-1.5">
                 <label
                   htmlFor="task-assignee"
-                  className="block text-sm font-medium text-slate-700"
+                  className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400"
                 >
-                  Assignee ID
+                  Assignee User ID
                 </label>
                 <Input
                   id="task-assignee"
@@ -349,12 +436,13 @@ export function TaskForm(props: TaskFormProps) {
                   onChange={handleChange}
                   placeholder="User UUID (optional)"
                   disabled={submitting}
+                  className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-sm font-mono"
                 />
               </div>
 
               {/* Team ID */}
               <div className="space-y-1.5">
-                <label htmlFor="task-team" className="block text-sm font-medium text-slate-700">
+                <label htmlFor="task-team" className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
                   Team ID
                 </label>
                 <Input
@@ -364,6 +452,7 @@ export function TaskForm(props: TaskFormProps) {
                   onChange={handleChange}
                   placeholder="Team UUID (optional)"
                   disabled={submitting}
+                  className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-sm font-mono"
                 />
               </div>
 
@@ -371,7 +460,7 @@ export function TaskForm(props: TaskFormProps) {
               <div className="space-y-1.5">
                 <label
                   htmlFor="task-start-date"
-                  className="block text-sm font-medium text-slate-700"
+                  className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400"
                 >
                   Start Date
                 </label>
@@ -382,23 +471,24 @@ export function TaskForm(props: TaskFormProps) {
                   value={form.startDate}
                   onChange={handleChange}
                   disabled={submitting}
+                  className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-sm"
                 />
               </div>
             </div>
           )}
 
-          {/* Error */}
+          {/* Error display */}
           {error && (
             <p
               role="alert"
-              className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+              className="rounded-xl border border-rose-200 dark:border-rose-900/50 bg-rose-50/50 dark:bg-rose-950/30 p-3 text-xs font-medium text-rose-700 dark:text-rose-300"
             >
               {error}
             </p>
           )}
 
-          {/* Actions */}
-          <div className="flex justify-end gap-3 pt-2">
+          {/* Form Actions */}
+          <div className="flex justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
             <Button
               type="button"
               variant="outline"

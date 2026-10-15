@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 import { X } from 'lucide-react';
 
@@ -77,11 +78,20 @@ export function SheetTrigger({
 export function SheetContent({
   children,
   className,
+  side = 'right',
+  hideCloseButton = false,
 }: {
   children: React.ReactNode;
   className?: string;
+  side?: 'left' | 'right' | 'top' | 'bottom';
+  hideCloseButton?: boolean;
 }) {
   const { open, setOpen } = useSheet();
+  const mounted = React.useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
 
   React.useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -101,13 +111,16 @@ export function SheetContent({
     };
   }, [open, setOpen]);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
-  return (
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-50 flex justify-end"
+      className={cn(
+        'fixed inset-0 z-50 flex',
+        side === 'left' ? 'justify-start' : 'justify-end',
+      )}
     >
       <div
         className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"
@@ -116,20 +129,25 @@ export function SheetContent({
       />
       <div
         className={cn(
-          'relative z-50 flex h-full w-full max-w-md flex-col bg-white p-6 shadow-xl transition ease-in-out duration-300 animate-in slide-in-from-right',
+          'relative z-50 flex h-full w-full max-w-full sm:max-w-md flex-col bg-white dark:bg-slate-900 p-6 shadow-xl transition ease-in-out duration-300 animate-in overflow-y-auto',
+          side === 'left' ? 'slide-in-from-left' : 'slide-in-from-right',
           className,
         )}
       >
-        <button
-          type="button"
-          onClick={() => setOpen(false)}
-          className="absolute top-4 right-4 rounded-sm opacity-70 ring-offset-white transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2"
-        >
-          <X className="h-4 w-4" />
-          <span className="sr-only">Close</span>
-        </button>
+        {!hideCloseButton && (
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="absolute top-4 right-4 z-50 flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+            aria-label="Close navigation"
+          >
+            <X className="h-4.5 w-4.5" />
+            <span className="sr-only">Close</span>
+          </button>
+        )}
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

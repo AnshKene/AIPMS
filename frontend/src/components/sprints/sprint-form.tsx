@@ -204,10 +204,10 @@ function SprintFormContent({
   return (
     <>
       <div className="space-y-1">
-        <h2 className="text-lg font-bold text-slate-900">
+        <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
           {mode === 'create' ? 'Create Sprint' : 'Edit Sprint'}
         </h2>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-slate-500 dark:text-slate-400">
           {mode === 'create'
             ? 'Plan a new sprint iteration with clear goals and date boundaries.'
             : 'Update sprint details, target dates, or delivery goals.'}
@@ -216,8 +216,8 @@ function SprintFormContent({
 
       <form onSubmit={handleSubmit} className="space-y-5 py-6">
         {error && (
-          <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">
-            <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
+          <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
+            <AlertCircle className="h-4 w-4 shrink-0 text-red-600 dark:text-red-400" />
             <span>{error}</span>
           </div>
         )}
@@ -227,7 +227,7 @@ function SprintFormContent({
           <div className="space-y-1.5">
             <label
               htmlFor="sprint-project"
-              className="block text-xs font-semibold text-slate-700"
+              className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
             >
               Project <span className="text-red-500">*</span>
             </label>
@@ -236,7 +236,7 @@ function SprintFormContent({
               value={projectId}
               onChange={(e) => setProjectId(e.target.value)}
               disabled={loading}
-              className="w-full h-9 rounded-md border border-slate-300 bg-white px-3 py-1 text-xs text-slate-900 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 cursor-pointer disabled:bg-slate-100"
+              className="w-full h-9 rounded-md border border-slate-300 bg-white px-3 py-1 text-xs text-slate-900 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 cursor-pointer disabled:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:disabled:bg-slate-800"
             >
               <option value="" disabled>
                 Select a project
@@ -254,7 +254,7 @@ function SprintFormContent({
         <div className="space-y-1.5">
           <label
             htmlFor="sprint-name"
-            className="block text-xs font-semibold text-slate-700"
+            className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
           >
             Sprint Name <span className="text-red-500">*</span>
           </label>
@@ -273,7 +273,7 @@ function SprintFormContent({
         <div className="space-y-1.5">
           <label
             htmlFor="sprint-goal"
-            className="block text-xs font-semibold text-slate-700 flex items-center gap-1.5"
+            className="block text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5"
           >
             <Target className="h-3.5 w-3.5 text-slate-400" />
             Sprint Goal <span className="text-slate-400 font-normal">(optional)</span>
@@ -285,7 +285,7 @@ function SprintFormContent({
             value={goal}
             onChange={(e) => setGoal(e.target.value)}
             disabled={loading}
-            className="w-full rounded-md border border-slate-300 bg-white p-2.5 text-xs text-slate-900 shadow-xs placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 disabled:bg-slate-100 resize-none"
+            className="w-full rounded-md border border-slate-300 bg-white p-2.5 text-xs text-slate-900 shadow-xs placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 disabled:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:disabled:bg-slate-800 resize-none"
           />
         </div>
 
@@ -294,7 +294,7 @@ function SprintFormContent({
           <div className="space-y-1.5">
             <label
               htmlFor="sprint-start-date"
-              className="block text-xs font-semibold text-slate-700 flex items-center gap-1.5"
+              className="block text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5"
             >
               <Calendar className="h-3.5 w-3.5 text-slate-400" />
               Start Date <span className="text-red-500">*</span>
@@ -312,7 +312,7 @@ function SprintFormContent({
           <div className="space-y-1.5">
             <label
               htmlFor="sprint-end-date"
-              className="block text-xs font-semibold text-slate-700 flex items-center gap-1.5"
+              className="block text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5"
             >
               <Calendar className="h-3.5 w-3.5 text-slate-400" />
               End Date <span className="text-red-500">*</span>
@@ -328,7 +328,7 @@ function SprintFormContent({
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100">
+        <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
           <Button
             type="button"
             variant="outline"

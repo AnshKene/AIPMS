@@ -9,6 +9,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Loader2 } from 'lucide-react';
+import { FormError } from '@/components/ui/error-state';
 import {
   PROJECT_STATUSES,
   type ProjectStatus,
@@ -243,11 +244,7 @@ export function ProjectForm({
           </div>
 
           {/* Error */}
-          {error && (
-            <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              {error}
-            </p>
-          )}
+          <FormError message={error} id="project-form-error" />
 
           {/* Actions */}
           <div className="flex justify-end gap-3 pt-2">

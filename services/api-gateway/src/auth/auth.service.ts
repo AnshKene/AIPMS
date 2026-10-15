@@ -8,6 +8,9 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
+import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
+import { ResetPasswordDto } from './dto/reset-password.dto.js';
+import { ChangePasswordDto } from './dto/change-password.dto.js';
 
 @Injectable()
 export class AuthService {
@@ -47,6 +50,31 @@ export class AuthService {
     });
   }
 
+  async listUsers(authHeader?: string) {
+    const headers: Record<string, string> = {};
+    if (authHeader) {
+      headers['authorization'] = authHeader;
+    }
+
+    return this.forwardRequest('/api/auth/users', {
+      method: 'GET',
+      headers,
+    });
+  }
+
+  async updateUserRole(id: string, role: string, authHeader?: string) {
+    const headers: Record<string, string> = {};
+    if (authHeader) {
+      headers['authorization'] = authHeader;
+    }
+
+    return this.forwardRequest(`/api/auth/users/${id}/role`, {
+      method: 'PATCH',
+      headers,
+      body: { role },
+    });
+  }
+
   async logout(authHeader?: string) {
     const headers: Record<string, string> = {};
     if (authHeader) {
@@ -56,6 +84,39 @@ export class AuthService {
     return this.forwardRequest('/api/auth/logout', {
       method: 'POST',
       headers,
+    });
+  }
+
+  async forgotPassword(dto: ForgotPasswordDto, originHeader?: string) {
+    const headers: Record<string, string> = {};
+    if (originHeader) {
+      headers['origin'] = originHeader;
+    }
+
+    return this.forwardRequest('/api/auth/forgot-password', {
+      method: 'POST',
+      headers,
+      body: dto,
+    });
+  }
+
+  async resetPassword(dto: ResetPasswordDto) {
+    return this.forwardRequest('/api/auth/reset-password', {
+      method: 'POST',
+      body: dto,
+    });
+  }
+
+  async changePassword(dto: ChangePasswordDto, authHeader?: string) {
+    const headers: Record<string, string> = {};
+    if (authHeader) {
+      headers['authorization'] = authHeader;
+    }
+
+    return this.forwardRequest('/api/auth/change-password', {
+      method: 'POST',
+      headers,
+      body: dto,
     });
   }
 

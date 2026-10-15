@@ -7,6 +7,8 @@ import {
 } from '@nestjs/common';
 import { describe, beforeEach, it, expect, vi } from 'vitest';
 import { AuthService } from './auth.service.js';
+import { Role } from './roles.enum.js';
+import { AuditService } from '../audit/audit.service.js';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -19,6 +21,11 @@ describe('AuthService', () => {
     }),
   };
 
+  const mockAuditService = {
+    recordEvent: vi.fn().mockResolvedValue({ id: 'audit-1' }),
+    queryLogs: vi.fn().mockResolvedValue({ items: [], meta: { total: 0 } }),
+  };
+
   beforeEach(async () => {
     vi.clearAllMocks();
 
@@ -28,6 +35,10 @@ describe('AuthService', () => {
         {
           provide: ConfigService,
           useValue: mockConfigService,
+        },
+        {
+          provide: AuditService,
+          useValue: mockAuditService,
         },
       ],
     }).compile();
@@ -100,6 +111,31 @@ describe('AuthService', () => {
           name: 'Weak Password',
         }),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should ignore role in registration payload for public signups and assign TEAM_MEMBER', async () => {
+      const mockSignUp = vi.fn().mockResolvedValue({
+        data: {
+          user: {
+            id: 'user-hacker-999',
+            email: 'hacker@example.com',
+            user_metadata: { name: 'Hacker User' },
+          },
+        },
+        error: null,
+      });
+      (service as any).supabase = {
+        auth: { signUp: mockSignUp },
+      };
+
+      const result = await service.register({
+        email: 'hacker@example.com',
+        password: 'password123',
+        name: 'Hacker User',
+        role: 'ADMIN',
+      } as any);
+
+      expect(result.user.role).toBe(Role.TEAM_MEMBER);
     });
   });
 
@@ -207,6 +243,46 @@ describe('AuthService', () => {
       await expect(service.logout('')).rejects.toThrow(
         UnauthorizedException,
       );
+    });
+  });
+
+  describe('updateUserRole', () => {
+    it('should update user role successfully and persist role', async () => {
+      const updated = await service.updateUserRole('member-user-003', Role.PROJECT_MANAGER);
+      expect(updated.role).toBe(Role.PROJECT_MANAGER);
+
+      // Verify role persistence on listUsers
+      const allUsers = await service.listUsers();
+      const target = allUsers.find((u) => u.id === 'member-user-003');
+      expect(target?.role).toBe(Role.PROJECT_MANAGER);
+    });
+
+    it('should reject invalid role enum values', async () => {
+      await expect(
+        service.updateUserRole('member-user-003', 'SUPERMAN' as any),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException if user is not found', async () => {
+      await expect(
+        service.updateUserRole('non-existent-id', Role.PROJECT_MANAGER),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should prevent demoting the last active administrator', async () => {
+      // admin-user-001 is the only initial ADMIN
+      await expect(
+        service.updateUserRole('admin-user-001', Role.TEAM_MEMBER),
+      ).rejects.toThrow('Cannot demote the last active administrator');
+    });
+
+    it('should allow demoting an admin if multiple active administrators exist', async () => {
+      // Promote member-user-003 to ADMIN first
+      await service.updateUserRole('member-user-003', Role.ADMIN);
+
+      // Now demoting admin-user-001 should succeed since member-user-003 is also an ADMIN
+      const demoted = await service.updateUserRole('admin-user-001', Role.PROJECT_MANAGER);
+      expect(demoted.role).toBe(Role.PROJECT_MANAGER);
     });
   });
 });

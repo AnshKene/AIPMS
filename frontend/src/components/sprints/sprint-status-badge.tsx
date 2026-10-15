@@ -15,22 +15,26 @@ const SPRINT_STATUS_CONFIG: Record<
 > = {
   PLANNED: {
     label: 'Planned',
-    className: 'bg-purple-50 text-purple-700 border-purple-200',
+    className:
+      'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800',
     icon: Clock,
   },
   ACTIVE: {
     label: 'Active',
-    className: 'bg-blue-50 text-blue-700 border-blue-200 ring-1 ring-blue-500/20',
+    className:
+      'bg-blue-50 text-blue-700 border-blue-200 ring-1 ring-blue-500/20 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-800 dark:ring-blue-500/30',
     icon: Play,
   },
   COMPLETED: {
     label: 'Completed',
-    className: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    className:
+      'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800',
     icon: CheckCircle2,
   },
   CANCELLED: {
     label: 'Cancelled',
-    className: 'bg-slate-100 text-slate-600 border-slate-200',
+    className:
+      'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800/80 dark:text-slate-400 dark:border-slate-700',
     icon: Ban,
   },
 };

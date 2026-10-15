@@ -1,6 +1,8 @@
 'use client';
 
 import * as React from 'react';
+import { useSearchParams } from 'next/navigation';
+import { useAuth } from '@/lib/auth/auth-context';
 import { AppShell } from '@/components/layout/AppShell';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,25 +26,35 @@ import { listTasks, type Task } from '@/lib/api/tasks';
 import { ActiveSprintCard, SprintCard } from '@/components/sprints/sprint-card';
 import { SprintForm } from '@/components/sprints/sprint-form';
 import { SprintWorkspace } from '@/components/sprints/sprint-workspace';
+import { SprintsSkeleton } from '@/components/sprints/SprintsSkeleton';
+import { ErrorState } from '@/components/ui/error-state';
+import { EmptyState, FilterEmptyState } from '@/components/ui/empty-state';
 import {
   Zap,
   Plus,
   Search,
   FolderKanban,
-  AlertCircle,
   X,
   Clock,
   CheckCircle2,
   Filter,
 } from 'lucide-react';
 
-export default function SprintsPage() {
+function SprintsPageContent() {
+  const searchParams = useSearchParams();
+  const initialProjectId = searchParams.get('projectId') || '';
+
+  const { user } = useAuth();
+  const canManage = user?.role === 'ADMIN' || user?.role === 'PROJECT_MANAGER';
+
   const [sprints, setSprints] = React.useState<Sprint[]>([]);
   const [projects, setProjects] = React.useState<Project[]>([]);
   const [projectMap, setProjectMap] = React.useState<Record<string, string>>({});
   const [tasks, setTasks] = React.useState<Task[]>([]);
 
-  const [selectedProjectId, setSelectedProjectId] = React.useState<string>('');
+  const [selectedProjectId, setSelectedProjectId] = React.useState<string>(
+    () => initialProjectId,
+  );
   const [selectedStatusFilter, setSelectedStatusFilter] = React.useState<string>('ALL');
   const [searchQuery, setSearchQuery] = React.useState('');
 
@@ -282,6 +294,8 @@ export default function SprintsPage() {
     setTasks((prev) => prev.filter((t) => t.id !== taskId));
   }
 
+  const selectedProjectName = selectedProjectId ? projectMap[selectedProjectId] : null;
+
   return (
     <AppShell>
       {focusedSprint ? (
@@ -300,37 +314,43 @@ export default function SprintsPage() {
         /* Main Sprints Dashboard View */
         <div className="space-y-6">
           {/* Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-6">
             <div className="space-y-1">
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2.5 flex-wrap">
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white shadow-xs">
                   <Zap className="h-5 w-5" />
                 </div>
-                <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+                <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
                   Sprint Management
                 </h1>
-                <Badge variant="info">Sprint Service</Badge>
+                {selectedProjectName && (
+                  <Badge variant="info" className="text-xs">
+                    Project: {selectedProjectName}
+                  </Badge>
+                )}
               </div>
-              <p className="text-sm text-slate-500">
-                Plan iterations, monitor active velocity, and track delivery progress across your projects.
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Plan iterations, track delivery, and keep sprint work focused across your projects.
               </p>
             </div>
 
-            <div className="flex items-center gap-3 shrink-0">
-              <SprintForm
-                mode="create"
-                projects={projects}
-                defaultProjectId={selectedProjectId}
-                trigger={
-                  <Button size="sm" className="gap-1.5 shadow-xs">
-                    <Plus className="h-4 w-4" />
-                    Create Sprint
-                  </Button>
-                }
-                onSubmit={(payload) => createSprint(payload as CreateSprintPayload)}
-                onSuccess={handleSprintCreated}
-              />
-            </div>
+            {canManage && (
+              <div className="flex items-center gap-3 shrink-0">
+                <SprintForm
+                  mode="create"
+                  projects={projects}
+                  defaultProjectId={selectedProjectId}
+                  trigger={
+                    <Button size="sm" className="gap-1.5 shadow-xs cursor-pointer">
+                      <Plus className="h-4 w-4" />
+                      Create Sprint
+                    </Button>
+                  }
+                  onSubmit={(payload) => createSprint(payload as CreateSprintPayload)}
+                  onSuccess={handleSprintCreated}
+                />
+              </div>
+            )}
           </div>
 
           {/* Search & Filter Toolbar */}
@@ -344,14 +364,14 @@ export default function SprintsPage() {
                   placeholder="Search sprints by name, goal, or project..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 pr-8 h-9 text-xs"
+                  className="pl-9 pr-8 h-9 text-xs bg-white dark:bg-slate-900"
                   aria-label="Search sprints"
                 />
                 {searchQuery && (
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
                     aria-label="Clear search"
                   >
                     <X className="h-3.5 w-3.5" />
@@ -366,7 +386,7 @@ export default function SprintsPage() {
                   value={selectedProjectId}
                   onChange={(e) => setSelectedProjectId(e.target.value)}
                   aria-label="Filter by project"
-                  className="h-9 rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 cursor-pointer"
+                  className="h-9 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1 text-xs font-medium text-slate-700 dark:text-slate-300 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 cursor-pointer"
                 >
                   <option value="">All Projects</option>
                   {projects.map((p) => (
@@ -384,7 +404,7 @@ export default function SprintsPage() {
                   value={selectedStatusFilter}
                   onChange={(e) => setSelectedStatusFilter(e.target.value)}
                   aria-label="Filter by sprint status"
-                  className="h-9 rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 cursor-pointer"
+                  className="h-9 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1 text-xs font-medium text-slate-700 dark:text-slate-300 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 cursor-pointer"
                 >
                   <option value="ALL">All Statuses</option>
                   <option value="ACTIVE">Active</option>
@@ -395,7 +415,7 @@ export default function SprintsPage() {
               </div>
             </div>
 
-            <div className="text-xs text-slate-500 font-medium self-end sm:self-center">
+            <div className="text-xs text-slate-500 dark:text-slate-400 font-medium self-end sm:self-center">
               {searchQuery || selectedStatusFilter !== 'ALL'
                 ? `${filteredSprints.length} of ${sprints.length} sprints match`
                 : `${sprints.length} ${sprints.length === 1 ? 'sprint' : 'sprints'} total`}
@@ -404,80 +424,50 @@ export default function SprintsPage() {
 
           {/* Error Banner */}
           {error && (
-            <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-              <AlertCircle className="h-5 w-5 shrink-0 text-red-600" />
-              <span>{error}</span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={fetchData}
-                className="ml-auto text-xs h-7 bg-white"
-              >
-                Retry
-              </Button>
-            </div>
+            <ErrorState
+              title="Unable to load sprints workspace"
+              error={error}
+              onRetry={fetchData}
+              variant="card"
+            />
           )}
 
           {/* Loading Skeletons */}
           {loading ? (
-            <div className="space-y-6 animate-pulse">
-              <div className="rounded-2xl border border-slate-200 bg-white p-6 space-y-4">
-                <div className="h-5 w-40 bg-slate-200 rounded" />
-                <div className="h-24 bg-slate-100 rounded" />
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="rounded-xl border border-slate-200 bg-white p-5 space-y-3">
-                    <div className="h-4 w-32 bg-slate-200 rounded" />
-                    <div className="h-12 bg-slate-100 rounded" />
-                  </div>
-                ))}
-              </div>
-            </div>
+            <SprintsSkeleton />
           ) : filteredSprints.length === 0 ? (
-            /* Empty State */
-            <div className="rounded-xl border border-dashed border-slate-200 bg-white p-12 text-center space-y-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-blue-600 mx-auto">
-                <Zap className="h-6 w-6" />
-              </div>
-              <h3 className="text-base font-semibold text-slate-800">
-                {searchQuery || selectedStatusFilter !== 'ALL'
-                  ? 'No sprints match your filter'
-                  : 'No sprints created yet'}
-              </h3>
-              <p className="text-xs text-slate-500 max-w-md mx-auto">
-                {searchQuery || selectedStatusFilter !== 'ALL'
-                  ? 'Try clearing your search query or selecting a different status filter.'
-                  : 'Plan your iterations with target dates and goals to track team delivery velocity.'}
-              </p>
-              {searchQuery || selectedStatusFilter !== 'ALL' ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setSearchQuery('');
-                    setSelectedStatusFilter('ALL');
-                  }}
-                  className="mt-2"
-                >
-                  Clear Filters
-                </Button>
-              ) : (
-                <SprintForm
-                  mode="create"
-                  projects={projects}
-                  defaultProjectId={selectedProjectId}
-                  trigger={
-                    <Button size="sm" className="gap-1.5 mt-2">
-                      <Plus className="h-4 w-4" />
-                      Create First Sprint
-                    </Button>
-                  }
-                  onSubmit={(payload) => createSprint(payload as CreateSprintPayload)}
-                  onSuccess={handleSprintCreated}
-                />
-              )}
-            </div>
+            searchQuery || selectedStatusFilter !== 'ALL' ? (
+              <FilterEmptyState
+                onClearFilters={() => {
+                  setSearchQuery('');
+                  setSelectedStatusFilter('ALL');
+                }}
+                description="No sprints match your selected status or search filter."
+              />
+            ) : (
+              <EmptyState
+                icon={<Zap className="h-6 w-6" />}
+                title="No sprints created yet"
+                description="Plan your iterations with target dates and goals to track team delivery velocity."
+                action={
+                  canManage ? (
+                    <SprintForm
+                      mode="create"
+                      projects={projects}
+                      defaultProjectId={selectedProjectId}
+                      trigger={
+                        <Button size="sm" className="gap-1.5 cursor-pointer">
+                          <Plus className="h-4 w-4" />
+                          Create First Sprint
+                        </Button>
+                      }
+                      onSubmit={(payload) => createSprint(payload as CreateSprintPayload)}
+                      onSuccess={handleSprintCreated}
+                    />
+                  ) : undefined
+                }
+              />
+            )
           ) : (
             /* Sprints Sections */
             <div className="space-y-8">
@@ -494,6 +484,7 @@ export default function SprintsPage() {
                         sprint={sprint}
                         tasks={tasks}
                         projectName={projectMap[sprint.projectId]}
+                        canManage={canManage}
                         onOpenWorkspace={(s) => setFocusedSprintId(s.id)}
                         onComplete={(s) => setCompletingSprint(s)}
                         onCancel={(s) => setCancellingSprint(s)}
@@ -508,10 +499,10 @@ export default function SprintsPage() {
               {plannedSprints.length > 0 && (
                 <section className="space-y-3" aria-labelledby="planned-sprints-heading">
                   <div className="flex items-center gap-2">
-                    <Clock className="h-4 w-4 text-purple-600" />
+                    <Clock className="h-4 w-4 text-purple-600 dark:text-purple-400" />
                     <h2
                       id="planned-sprints-heading"
-                      className="text-sm font-bold text-slate-900 uppercase tracking-wider"
+                      className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider"
                     >
                       Planned Sprints ({plannedSprints.length})
                     </h2>
@@ -523,6 +514,7 @@ export default function SprintsPage() {
                         sprint={sprint}
                         tasks={tasks}
                         projectName={projectMap[sprint.projectId]}
+                        canManage={canManage}
                         onOpenWorkspace={(s) => setFocusedSprintId(s.id)}
                         onStart={(s) => setStartingSprint(s)}
                         onEdit={(s) => setEditingSprint(s)}
@@ -537,10 +529,10 @@ export default function SprintsPage() {
               {completedSprints.length > 0 && (
                 <section className="space-y-3" aria-labelledby="past-sprints-heading">
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                     <h2
                       id="past-sprints-heading"
-                      className="text-sm font-bold text-slate-900 uppercase tracking-wider"
+                      className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider"
                     >
                       Completed & Past Iterations ({completedSprints.length})
                     </h2>
@@ -552,6 +544,7 @@ export default function SprintsPage() {
                         sprint={sprint}
                         tasks={tasks}
                         projectName={projectMap[sprint.projectId]}
+                        canManage={canManage}
                         onOpenWorkspace={(s) => setFocusedSprintId(s.id)}
                       />
                     ))}
@@ -562,83 +555,101 @@ export default function SprintsPage() {
           )}
 
           {/* Edit Sprint Sheet */}
-          <SprintForm
-            mode="edit"
-            sprint={editingSprint}
-            open={editingSprint !== null}
-            onOpenChange={(isOpen) => {
-              if (!isOpen) setEditingSprint(null);
-            }}
-            onSubmit={(payload) =>
-              updateSprint(editingSprint!.id, payload as UpdateSprintPayload)
-            }
-            onSuccess={(updated) => {
-              handleSprintUpdated(updated);
-              setEditingSprint(null);
-            }}
-          />
+          {canManage && (
+            <SprintForm
+              mode="edit"
+              sprint={editingSprint}
+              open={editingSprint !== null}
+              onOpenChange={(isOpen) => {
+                if (!isOpen) setEditingSprint(null);
+              }}
+              onSubmit={(payload) =>
+                updateSprint(editingSprint!.id, payload as UpdateSprintPayload)
+              }
+              onSuccess={(updated) => {
+                handleSprintUpdated(updated);
+                setEditingSprint(null);
+              }}
+            />
+          )}
 
           {/* Confirm Dialog: Start Sprint */}
-          <ConfirmDialog
-            open={startingSprint !== null}
-            onOpenChange={(open) => {
-              if (!open) setStartingSprint(null);
-            }}
-            title={`Start "${startingSprint?.name}"?`}
-            description="Starting this sprint will set its status to ACTIVE and make it the active delivery iteration for this project."
-            confirmLabel="Start Sprint"
-            variant="default"
-            loading={actionLoading}
-            error={actionError}
-            onConfirm={handleConfirmStart}
-          />
+          {canManage && (
+            <ConfirmDialog
+              open={startingSprint !== null}
+              onOpenChange={(open) => {
+                if (!open) setStartingSprint(null);
+              }}
+              title={`Start "${startingSprint?.name}"?`}
+              description="Starting this sprint will set its status to ACTIVE and make it the active delivery iteration for this project."
+              confirmLabel="Start Sprint"
+              variant="default"
+              loading={actionLoading}
+              error={actionError}
+              onConfirm={handleConfirmStart}
+            />
+          )}
 
           {/* Confirm Dialog: Complete Sprint */}
-          <ConfirmDialog
-            open={completingSprint !== null}
-            onOpenChange={(open) => {
-              if (!open) setCompletingSprint(null);
-            }}
-            title={`Complete "${completingSprint?.name}"?`}
-            description="Completing this sprint will finalize all task progress records and transition it to COMPLETED. Any incomplete tasks will remain in this sprint record or can be reallocated."
-            confirmLabel="Complete Sprint"
-            variant="default"
-            loading={actionLoading}
-            error={actionError}
-            onConfirm={handleConfirmComplete}
-          />
+          {canManage && (
+            <ConfirmDialog
+              open={completingSprint !== null}
+              onOpenChange={(open) => {
+                if (!open) setCompletingSprint(null);
+              }}
+              title={`Complete "${completingSprint?.name}"?`}
+              description="Completing this sprint will finalize all task progress records and transition it to COMPLETED. Any incomplete tasks will remain in this sprint record or can be reallocated."
+              confirmLabel="Complete Sprint"
+              variant="default"
+              loading={actionLoading}
+              error={actionError}
+              onConfirm={handleConfirmComplete}
+            />
+          )}
 
           {/* Confirm Dialog: Cancel Sprint */}
-          <ConfirmDialog
-            open={cancellingSprint !== null}
-            onOpenChange={(open) => {
-              if (!open) setCancellingSprint(null);
-            }}
-            title={`Cancel "${cancellingSprint?.name}"?`}
-            description="Cancelling this sprint will transition it to CANCELLED. This action stops the current iteration."
-            confirmLabel="Cancel Sprint"
-            variant="destructive"
-            loading={actionLoading}
-            error={actionError}
-            onConfirm={handleConfirmCancel}
-          />
+          {canManage && (
+            <ConfirmDialog
+              open={cancellingSprint !== null}
+              onOpenChange={(open) => {
+                if (!open) setCancellingSprint(null);
+              }}
+              title={`Cancel "${cancellingSprint?.name}"?`}
+              description="Cancelling this sprint will transition it to CANCELLED. This action stops the current iteration."
+              confirmLabel="Cancel Sprint"
+              variant="destructive"
+              loading={actionLoading}
+              error={actionError}
+              onConfirm={handleConfirmCancel}
+            />
+          )}
 
           {/* Confirm Dialog: Delete Planned Sprint */}
-          <ConfirmDialog
-            open={deletingSprint !== null}
-            onOpenChange={(open) => {
-              if (!open) setDeletingSprint(null);
-            }}
-            title={`Delete "${deletingSprint?.name}"?`}
-            description="This will delete the planned sprint. All assigned tasks will be preserved and safely returned to the project backlog. This action cannot be undone."
-            confirmLabel="Delete Sprint"
-            variant="destructive"
-            loading={actionLoading}
-            error={actionError}
-            onConfirm={handleConfirmDelete}
-          />
+          {canManage && (
+            <ConfirmDialog
+              open={deletingSprint !== null}
+              onOpenChange={(open) => {
+                if (!open) setDeletingSprint(null);
+              }}
+              title={`Delete "${deletingSprint?.name}"?`}
+              description="This will delete the planned sprint. All assigned tasks will be preserved and safely returned to the project backlog. This action cannot be undone."
+              confirmLabel="Delete Sprint"
+              variant="destructive"
+              loading={actionLoading}
+              error={actionError}
+              onConfirm={handleConfirmDelete}
+            />
+          )}
         </div>
       )}
     </AppShell>
+  );
+}
+
+export default function SprintsPage() {
+  return (
+    <React.Suspense fallback={<AppShell><SprintsSkeleton /></AppShell>}>
+      <SprintsPageContent />
+    </React.Suspense>
   );
 }

@@ -146,14 +146,14 @@ function TeamFormContent({
     <>
       <div className="mb-6 space-y-1">
         <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400">
             <Users className="h-4 w-4" />
           </div>
-          <h2 className="text-lg font-bold text-slate-900">
+          <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
             {mode === 'create' ? 'Create New Team' : 'Edit Team Details'}
           </h2>
         </div>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-slate-500 dark:text-slate-400">
           {mode === 'create'
             ? 'Organize engineers, designers, and managers around project initiatives.'
             : 'Update the name and purpose of this team.'}
@@ -166,14 +166,14 @@ function TeamFormContent({
           <div className="space-y-1.5">
             <label
               htmlFor="team-projectId"
-              className="flex items-center gap-1.5 text-xs font-semibold text-slate-700"
+              className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300"
             >
-              <FolderKanban className="h-3.5 w-3.5 text-slate-500" />
+              <FolderKanban className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />
               Associated Project <span className="text-red-500">*</span>
             </label>
 
             {defaultProjectId ? (
-              <div className="flex items-center gap-2 p-2.5 rounded-md border border-slate-200 bg-slate-50 text-xs text-slate-700 font-mono">
+              <div className="flex items-center gap-2 p-2.5 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-xs text-slate-700 dark:text-slate-300 font-mono">
                 <span className="truncate">{defaultProjectId}</span>
               </div>
             ) : (
@@ -183,7 +183,7 @@ function TeamFormContent({
                 value={form.projectId}
                 onChange={handleChange}
                 disabled={submitting || loadingProjects}
-                className="w-full h-9 rounded-md border border-slate-300 bg-white px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:border-transparent cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                className="w-full h-9 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1 text-sm text-slate-900 dark:text-slate-100 shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                 required
               >
                 <option value="" disabled>
@@ -203,7 +203,7 @@ function TeamFormContent({
         <div className="space-y-1.5">
           <label
             htmlFor="team-name"
-            className="text-xs font-semibold text-slate-700"
+            className="text-xs font-semibold text-slate-700 dark:text-slate-300"
           >
             Team Name <span className="text-red-500">*</span>
           </label>
@@ -225,7 +225,7 @@ function TeamFormContent({
         <div className="space-y-1.5">
           <label
             htmlFor="team-description"
-            className="text-xs font-semibold text-slate-700"
+            className="text-xs font-semibold text-slate-700 dark:text-slate-300"
           >
             Description <span className="text-slate-400 font-normal">(optional)</span>
           </label>
@@ -237,20 +237,20 @@ function TeamFormContent({
             value={form.description}
             onChange={handleChange}
             disabled={submitting}
-            className="flex w-full rounded-md border border-slate-300 bg-transparent px-3 py-2 text-sm shadow-xs transition-colors placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:border-transparent disabled:cursor-not-allowed disabled:opacity-50 resize-none"
+            className="flex w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 shadow-xs transition-colors placeholder:text-slate-400 dark:placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 disabled:cursor-not-allowed disabled:opacity-50 resize-none"
           />
         </div>
 
         {/* Error Notice */}
         {error && (
-          <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+          <div className="flex items-start gap-2 rounded-md border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/40 p-3 text-xs text-red-700 dark:text-red-300">
             <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
             <span>{error}</span>
           </div>
         )}
 
         {/* Action Buttons */}
-        <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100">
+        <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
           <Button
             type="button"
             variant="outline"

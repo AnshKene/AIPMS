@@ -3,6 +3,7 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import { describe, beforeEach, afterEach, it, expect, vi } from 'vitest';
 import { AppModule } from '../src/app.module.js';
+import { AuthService } from '../src/auth/auth.service.js';
 import { HttpExceptionFilter } from '../src/common/filters/http-exception.filter.js';
 
 describe('API Gateway (e2e)', () => {
@@ -10,6 +11,17 @@ describe('API Gateway (e2e)', () => {
 
   beforeEach(async () => {
     vi.restoreAllMocks();
+    vi.spyOn(AuthService.prototype, 'getCurrentUser').mockImplementation(async (authHeader?: string) => {
+      if (!authHeader) {
+        throw new Error('Authentication token required');
+      }
+      return {
+        id: 'usr-123',
+        email: 'user@example.com',
+        name: 'Example User',
+        role: 'ADMIN',
+      };
+    });
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -140,13 +152,17 @@ describe('API Gateway (e2e)', () => {
         id: 'usr-123',
         email: 'user@example.com',
         name: 'Example User',
+        role: 'ADMIN',
       };
 
-      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-        new Response(JSON.stringify(mockUserResponse), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        }),
+      vi.spyOn(AuthService.prototype, 'getCurrentUser').mockRestore();
+
+      vi.spyOn(globalThis, 'fetch').mockImplementation(
+        async () =>
+          new Response(JSON.stringify(mockUserResponse), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
       );
 
       const response = await request(app.getHttpServer())
@@ -240,6 +256,7 @@ describe('API Gateway (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .get('/api/projects')
+        .set('Authorization', 'Bearer bearer-token')
         .expect(503);
 
       expect(response.body.statusCode).toBe(503);
@@ -285,6 +302,7 @@ describe('API Gateway (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .get('/api/teams/invalid-id')
+        .set('Authorization', 'Bearer bearer-token')
         .expect(404);
 
       expect(response.body.statusCode).toBe(404);
@@ -318,6 +336,7 @@ describe('API Gateway (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .get('/api/tasks')
+        .set('Authorization', 'Bearer bearer-token')
         .expect(504);
 
       expect(response.body.statusCode).toBe(504);
@@ -382,6 +401,102 @@ describe('API Gateway (e2e)', () => {
         .expect(200);
 
       expect(response.body).toEqual(mockOverview);
+    });
+  });
+
+  describe('AI Service Routing (/api/ai)', () => {
+    it('should forward POST /api/ai/projects/:id/health-summary with Authorization header', async () => {
+      const mockAiResponse = {
+        projectId: 'p-1',
+        analysisType: 'health-summary',
+        summary: 'All tasks on schedule.',
+      };
+
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response(JSON.stringify(mockAiResponse), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+
+      const response = await request(app.getHttpServer())
+        .post('/api/ai/projects/p-1/health-summary')
+        .set('Authorization', 'Bearer bearer-token')
+        .send({})
+        .expect(200);
+
+      expect(response.body).toEqual(mockAiResponse);
+      expect(fetch).toHaveBeenCalledWith(
+        'http://localhost:3009/api/ai/projects/p-1/health-summary',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            authorization: 'Bearer bearer-token',
+          }),
+        }),
+      );
+    });
+
+    it('should handle AI Service unavailability cleanly with 503', async () => {
+      vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new TypeError('fetch failed'));
+
+      const response = await request(app.getHttpServer())
+        .post('/api/ai/projects/p-1/health-summary')
+        .expect(503);
+
+      expect(response.body.statusCode).toBe(503);
+      expect(response.body.message).toContain('AI service is currently unavailable');
+    });
+  });
+
+  describe('PATCH /api/auth/users/:id/role', () => {
+    it('should allow ADMIN to update a user role and forward request to Auth Service', async () => {
+      const mockUpdatedUser = {
+        id: 'member-user-003',
+        email: 'member@aipms.com',
+        role: 'PROJECT_MANAGER',
+      };
+
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response(JSON.stringify(mockUpdatedUser), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+
+      const response = await request(app.getHttpServer())
+        .patch('/api/auth/users/member-user-003/role')
+        .set('Authorization', 'Bearer admin-token')
+        .send({ role: 'PROJECT_MANAGER' })
+        .expect(200);
+
+      expect(response.body.role).toBe('PROJECT_MANAGER');
+    });
+
+    it('should reject role update attempt by non-admin with 403 Forbidden', async () => {
+      vi.spyOn(AuthService.prototype, 'getCurrentUser').mockResolvedValueOnce({
+        id: 'member-user-003',
+        email: 'member@aipms.com',
+        role: 'TEAM_MEMBER',
+      });
+
+      const response = await request(app.getHttpServer())
+        .patch('/api/auth/users/member-user-003/role')
+        .set('Authorization', 'Bearer member-token')
+        .send({ role: 'ADMIN' })
+        .expect(403);
+
+      expect(response.body.statusCode).toBe(403);
+    });
+
+    it('should reject invalid role enum with 400 Bad Request', async () => {
+      const response = await request(app.getHttpServer())
+        .patch('/api/auth/users/member-user-003/role')
+        .set('Authorization', 'Bearer admin-token')
+        .send({ role: 'SUPERMAN' })
+        .expect(400);
+
+      expect(response.body.statusCode).toBe(400);
     });
   });
 });

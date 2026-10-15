@@ -111,7 +111,8 @@ async function request<T = unknown>(
     if (error instanceof ApiError) {
       throw error;
     }
-    throw new Error(`Network error connecting to API Gateway: ${(error as Error).message}`);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Network error connecting to API Gateway: ${message}`);
   }
 }
 

@@ -1,498 +1,440 @@
 'use client';
 
 import * as React from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { AppShell } from '@/components/layout/AppShell';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/lib/auth/auth-context';
 import {
-  FolderKanban,
-  CheckSquare,
-  Zap,
-  AlertTriangle,
-  Sparkles,
-  Server,
-  ArrowUpRight,
-  Clock,
-  Layers,
-  RefreshCw,
-  AlertCircle,
+  Calendar,
+  ChevronDown,
   Plus,
+  RefreshCw,
+  Sparkles,
 } from 'lucide-react';
-import Link from 'next/link';
-import { listProjects, type Project } from '@/lib/api/projects';
-import { reportsApi } from '@/lib/api/reports';
 
-interface AggregatedMetrics {
-  totalProjects: number;
-  activeProjects: number;
-  totalTasks: number;
-  completedTasks: number;
-  pendingTasks: number;
-  overdueTasks: number;
-  totalSprints: number;
-  activeSprints: number;
-  totalRisks: number;
-  openRisks: number;
-  highScoreRisks: number;
+import { StatCards, type StatMetrics } from '@/components/dashboard/StatCards';
+import { DeliveryTrendChart } from '@/components/dashboard/DeliveryTrendChart';
+import { SprintHealthCard } from '@/components/dashboard/SprintHealthCard';
+import { TaskDistributionCard } from '@/components/dashboard/TaskDistributionCard';
+import { TopProjectsTable } from '@/components/dashboard/TopProjectsTable';
+import { RecentActivityCard } from '@/components/dashboard/RecentActivityCard';
+import { UpcomingDeadlinesCard } from '@/components/dashboard/UpcomingDeadlinesCard';
+import { PriorityRisksCard } from '@/components/dashboard/PriorityRisksCard';
+import { AIAssistantPanel } from '@/components/dashboard/AIAssistantPanel';
+import { AIToolModal, type AIToolType } from '@/components/dashboard/AIToolModal';
+import { DashboardSkeleton } from '@/components/dashboard/DashboardSkeleton';
+import { ErrorState } from '@/components/ui/error-state';
+import { ProjectForm } from '@/components/projects/ProjectForm';
+
+import { listProjects, createProject, type Project } from '@/lib/api/projects';
+import { listTasks, type Task } from '@/lib/api/tasks';
+import { listRisks, type Risk } from '@/lib/api/risks';
+import { listSprints, type Sprint } from '@/lib/api/sprints';
+
+export type DateFilterOption = 'Last 7 days' | 'Last 30 days' | 'Last 90 days' | 'All time';
+
+function getTimeBasedGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return 'Good morning';
+  if (hour >= 12 && hour < 17) return 'Good afternoon';
+  return 'Good evening';
 }
 
-export default function DashboardPage() {
-  const [projects, setProjects] = React.useState<Project[]>([]);
-  const [metrics, setMetrics] = React.useState<AggregatedMetrics | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+function DashboardContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const { user } = useAuth();
 
-  const loadDashboardData = React.useCallback(async () => {
-    setLoading(true);
+  const [projects, setProjects] = React.useState<Project[]>([]);
+  const [tasks, setTasks] = React.useState<Task[]>([]);
+  const [sprints, setSprints] = React.useState<Sprint[]>([]);
+  const [risks, setRisks] = React.useState<Risk[]>([]);
+  const [metrics, setMetrics] = React.useState<StatMetrics | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [isRefreshing, setIsRefreshing] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [dateFilter, setDateFilter] = React.useState<DateFilterOption>('Last 30 days');
+  const [isFilterDropdownOpen, setIsFilterDropdownOpen] = React.useState(false);
+
+  // Active AI Tool Modal state driven by query parameter ?tool=...
+  const activeToolParam =
+    (searchParams.get('tool') as AIToolType) ||
+    (searchParams.get('action') === 'ask_ai' ? 'query' : null);
+
+  // RBAC permission check for project creation
+  const canCreateProject = user?.role === 'ADMIN' || user?.role === 'PROJECT_MANAGER';
+
+  const fetchDashboardData = React.useCallback(async (isSilentRefresh = false) => {
+    if (isSilentRefresh) {
+      setIsRefreshing(true);
+    } else {
+      setLoading(true);
+    }
     setError(null);
 
     try {
-      const projectsRes = await listProjects({ limit: 100 });
-      const projectList = projectsRes.data ?? [];
-      setProjects(projectList);
+      const failedSections: string[] = [];
 
-      if (projectList.length === 0) {
-        setMetrics({
-          totalProjects: 0,
-          activeProjects: 0,
-          totalTasks: 0,
-          completedTasks: 0,
-          pendingTasks: 0,
-          overdueTasks: 0,
-          totalSprints: 0,
-          activeSprints: 0,
-          totalRisks: 0,
-          openRisks: 0,
-          highScoreRisks: 0,
-        });
-        return;
+      // Parallel fetch projects, tasks, sprints, and risks from API Gateway using limit: 500 for tasks
+      const [projResult, taskResult, sprintResult, riskResult] = await Promise.allSettled([
+        listProjects({ limit: 100 }),
+        listTasks({ limit: 500 }),
+        listSprints({ limit: 100 }),
+        listRisks({ limit: 100 }),
+      ]);
+
+      let projList: Project[] = [];
+      let totalProjectsCount = 0;
+      if (projResult.status === 'fulfilled') {
+        const resp = projResult.value;
+        projList = Array.isArray(resp) ? resp : resp.data ?? [];
+        totalProjectsCount = !Array.isArray(resp) && resp.meta?.total !== undefined ? resp.meta.total : projList.length;
+      } else {
+        failedSections.push('Projects');
       }
 
-      const activeProjectsCount = projectList.filter((p) => p.status === 'ACTIVE').length;
+      let taskList: Task[] = [];
+      let totalTasksCount = 0;
+      if (taskResult.status === 'fulfilled') {
+        const resp = taskResult.value;
+        taskList = Array.isArray(resp) ? resp : resp.data ?? [];
+        totalTasksCount = !Array.isArray(resp) && resp.meta?.total !== undefined ? resp.meta.total : taskList.length;
+      } else {
+        failedSections.push('Tasks');
+      }
 
-      // Fetch overview reports for accessible projects
-      const reportPromises = projectList.map((p) =>
-        reportsApi.getProjectOverview(p.id).catch(() => null),
+      let sprintList: Sprint[] = [];
+      if (sprintResult.status === 'fulfilled') {
+        const resp = sprintResult.value;
+        sprintList = Array.isArray(resp) ? resp : (resp as { data?: Sprint[] }).data ?? [];
+      } else {
+        failedSections.push('Sprints');
+      }
+
+      let riskList: Risk[] = [];
+      if (riskResult.status === 'fulfilled') {
+        const resp = riskResult.value;
+        riskList = Array.isArray(resp) ? resp : (resp as { data?: Risk[] }).data ?? [];
+      } else {
+        failedSections.push('Risks');
+      }
+
+      if (failedSections.length > 0) {
+        setError(`Unable to load complete metrics for: ${failedSections.join(', ')}. Displaying available data.`);
+      }
+
+      setProjects(projList);
+      setTasks(taskList);
+      setSprints(sprintList);
+      setRisks(riskList);
+
+      // Dynamic metrics calculation based on fetched dataset
+      const activeProjCount = projList.filter((p) => p.status === 'ACTIVE').length;
+      const completedProjCount = projList.filter((p) => p.status === 'COMPLETED').length;
+
+      const doneTasksCount = taskList.filter((t) => t.status === 'DONE').length;
+      // Guarantee exact mathematical balance: doneTasks + remainingTasks === totalTasks
+      const remainingTasksCount = Math.max(0, totalTasksCount - doneTasksCount);
+
+      // Mutually exclusive open risk analysis
+      const openRisksList = riskList.filter((r) => r.status === 'OPEN' || r.status === 'MITIGATING');
+      const openRisksCount = openRisksList.length;
+
+      const highRisksList = openRisksList.filter(
+        (r) => (r.riskScore ?? 0) >= 6 || r.probability === 'HIGH' || r.impact === 'HIGH',
       );
+      const highRisksCount = highRisksList.length;
 
-      const reports = await Promise.all(reportPromises);
+      const mediumRisksCount = openRisksList.filter((r) => {
+        const isHigh = (r.riskScore ?? 0) >= 6 || r.probability === 'HIGH' || r.impact === 'HIGH';
+        if (isHigh) return false;
+        return (r.riskScore ?? 0) >= 3 || r.probability === 'MEDIUM' || r.impact === 'MEDIUM';
+      }).length;
 
-      let totalTasks = 0;
-      let completedTasks = 0;
-      let pendingTasks = 0;
-      let overdueTasks = 0;
-      let totalSprints = 0;
-      let activeSprints = 0;
-      let totalRisks = 0;
-      let openRisks = 0;
-      let highScoreRisks = 0;
+      // Sprint health attribution: track projects that have high open risks
+      const highRiskProjectIds = new Set(highRisksList.map((r) => r.projectId).filter(Boolean));
 
-      for (const rep of reports) {
-        if (!rep) continue;
-        totalTasks += rep.tasks?.totalTasks ?? rep.tasks?.total ?? 0;
-        completedTasks += rep.tasks?.completedTasks ?? rep.tasks?.done ?? 0;
-        pendingTasks += rep.tasks?.pendingTasks ?? 0;
-        overdueTasks += rep.tasks?.overdue ?? 0;
+      const activeSprintsList = sprintList.filter((s) => s.status === 'ACTIVE');
+      const activeSprintsCount = activeSprintsList.length;
 
-        totalSprints += rep.sprints?.totalSprints ?? rep.sprints?.total ?? 0;
-        activeSprints += rep.sprints?.activeSprints ?? rep.sprints?.active ?? 0;
+      const onTrackSprintsCount = activeSprintsList.filter((s) => {
+        const endDate = new Date(s.endDate).getTime();
+        const isPastDue = !isNaN(endDate) && endDate < Date.now();
+        const hasHighRisk = s.projectId ? highRiskProjectIds.has(s.projectId) : false;
+        return !isPastDue && !hasHighRisk;
+      }).length;
 
-        totalRisks += rep.risks?.totalRisks ?? rep.risks?.total ?? 0;
-        openRisks += rep.risks?.openRisks ?? rep.risks?.open ?? 0;
-        if ((rep.risks?.averageScore ?? 0) >= 6) {
-          highScoreRisks++;
-        }
-      }
+      const atRiskSprintsCount = Math.max(0, activeSprintsCount - onTrackSprintsCount);
 
       setMetrics({
-        totalProjects: projectList.length,
-        activeProjects: activeProjectsCount,
-        totalTasks,
-        completedTasks,
-        pendingTasks,
-        overdueTasks,
-        totalSprints,
-        activeSprints,
-        totalRisks,
-        openRisks,
-        highScoreRisks,
+        totalProjects: totalProjectsCount,
+        activeProjects: activeProjCount,
+        completedProjects: completedProjCount,
+        totalTasks: totalTasksCount,
+        doneTasks: doneTasksCount,
+        remainingTasks: remainingTasksCount,
+        activeSprints: activeSprintsCount,
+        onTrackSprints: onTrackSprintsCount,
+        atRiskSprints: atRiskSprintsCount,
+        openRisks: openRisksCount,
+        highRisks: highRisksCount,
+        mediumRisks: mediumRisksCount,
       });
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : 'Failed to load executive dashboard data from API Gateway.';
+      const msg = err instanceof Error ? err.message : 'Failed to load live backend metrics';
       setError(msg);
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
   }, []);
 
   React.useEffect(() => {
-    let active = true;
-    listProjects({ limit: 100 })
-      .then(async (projectsRes) => {
-        if (!active) return;
-        const projectList = projectsRes.data ?? [];
-        setProjects(projectList);
-
-        if (projectList.length === 0) {
-          setMetrics({
-            totalProjects: 0,
-            activeProjects: 0,
-            totalTasks: 0,
-            completedTasks: 0,
-            pendingTasks: 0,
-            overdueTasks: 0,
-            totalSprints: 0,
-            activeSprints: 0,
-            totalRisks: 0,
-            openRisks: 0,
-            highScoreRisks: 0,
-          });
-          setLoading(false);
-          return;
-        }
-
-        const activeProjectsCount = projectList.filter((p) => p.status === 'ACTIVE').length;
-        const reportPromises = projectList.map((p) =>
-          reportsApi.getProjectOverview(p.id).catch(() => null),
-        );
-
-        const reports = await Promise.all(reportPromises);
-        if (!active) return;
-
-        let totalTasks = 0;
-        let completedTasks = 0;
-        let pendingTasks = 0;
-        let overdueTasks = 0;
-        let totalSprints = 0;
-        let activeSprints = 0;
-        let totalRisks = 0;
-        let openRisks = 0;
-        let highScoreRisks = 0;
-
-        for (const rep of reports) {
-          if (!rep) continue;
-          totalTasks += rep.tasks?.totalTasks ?? rep.tasks?.total ?? 0;
-          completedTasks += rep.tasks?.completedTasks ?? rep.tasks?.done ?? 0;
-          pendingTasks += rep.tasks?.pendingTasks ?? 0;
-          overdueTasks += rep.tasks?.overdue ?? 0;
-
-          totalSprints += rep.sprints?.totalSprints ?? rep.sprints?.total ?? 0;
-          activeSprints += rep.sprints?.activeSprints ?? rep.sprints?.active ?? 0;
-
-          totalRisks += rep.risks?.totalRisks ?? rep.risks?.total ?? 0;
-          openRisks += rep.risks?.openRisks ?? rep.risks?.open ?? 0;
-          if ((rep.risks?.averageScore ?? 0) >= 6) {
-            highScoreRisks++;
-          }
-        }
-
-        setMetrics({
-          totalProjects: projectList.length,
-          activeProjects: activeProjectsCount,
-          totalTasks,
-          completedTasks,
-          pendingTasks,
-          overdueTasks,
-          totalSprints,
-          activeSprints,
-          totalRisks,
-          openRisks,
-          highScoreRisks,
-        });
-        setLoading(false);
-      })
-      .catch((err: unknown) => {
-        if (!active) return;
-        const msg =
-          err instanceof Error
-            ? err.message
-            : 'Failed to load executive dashboard data from API Gateway.';
-        setError(msg);
-        setLoading(false);
-      });
-
-    return () => {
-      active = false;
+    let isMounted = true;
+    const run = async () => {
+      if (isMounted) {
+        await fetchDashboardData(false);
+      }
     };
-  }, []);
+    void run();
+    return () => {
+      isMounted = false;
+    };
+  }, [fetchDashboardData]);
 
-  const statCards = [
-    {
-      title: 'Total Projects',
-      value: loading ? '--' : String(metrics?.totalProjects ?? 0),
-      subtitle: loading
-        ? 'Loading projects...'
-        : (metrics?.totalProjects ?? 0) === 0
-          ? 'No active projects yet'
-          : `${metrics?.activeProjects ?? 0} active, ${(metrics?.totalProjects ?? 0) - (metrics?.activeProjects ?? 0)} other`,
-      icon: FolderKanban,
-      color: 'text-blue-600',
-      bgColor: 'bg-blue-50 border-blue-100',
-      href: '/projects',
-    },
-    {
-      title: 'Total Tasks',
-      value: loading ? '--' : String(metrics?.totalTasks ?? 0),
-      subtitle: loading
-        ? 'Loading tasks...'
-        : (metrics?.totalTasks ?? 0) === 0
-          ? 'No tasks configured'
-          : `${metrics?.completedTasks ?? 0} completed • ${metrics?.pendingTasks ?? 0} pending`,
-      icon: CheckSquare,
-      color: 'text-emerald-600',
-      bgColor: 'bg-emerald-50 border-emerald-100',
-      href: '/tasks',
-    },
-    {
-      title: 'Active Sprints',
-      value: loading ? '--' : String(metrics?.activeSprints ?? 0),
-      subtitle: loading
-        ? 'Loading sprints...'
-        : (metrics?.totalSprints ?? 0) === 0
-          ? 'No planned sprints'
-          : `${metrics?.totalSprints ?? 0} total sprint iteration${(metrics?.totalSprints ?? 0) === 1 ? '' : 's'}`,
-      icon: Zap,
-      color: 'text-amber-600',
-      bgColor: 'bg-amber-50 border-amber-100',
-      href: '/sprints',
-    },
-    {
-      title: 'Open Risks',
-      value: loading ? '--' : String(metrics?.openRisks ?? 0),
-      subtitle: loading
-        ? 'Loading risks...'
-        : (metrics?.totalRisks ?? 0) === 0
-          ? 'No identified risks'
-          : (metrics?.highScoreRisks ?? 0) > 0
-            ? `${metrics?.highScoreRisks} critical risk vectors (≥6)`
-            : `${metrics?.openRisks ?? 0} open, ${metrics?.totalRisks ? metrics.totalRisks - (metrics.openRisks ?? 0) : 0} mitigated/resolved`,
-      icon: AlertTriangle,
-      color: 'text-rose-600',
-      bgColor: 'bg-rose-50 border-rose-100',
-      href: '/risks',
-    },
-  ];
+  const [now] = React.useState(() => Date.now());
+
+  // Date filtering logic
+  const filteredTasks = React.useMemo(() => {
+    if (dateFilter === 'All time') return tasks;
+
+    const daysMap: Record<DateFilterOption, number> = {
+      'Last 7 days': 7,
+      'Last 30 days': 30,
+      'Last 90 days': 90,
+      'All time': Infinity,
+    };
+
+    const cutoff = now - daysMap[dateFilter] * 24 * 60 * 60 * 1000;
+
+    return tasks.filter((t) => {
+      const time = t.createdAt ? new Date(t.createdAt).getTime() : 0;
+      return time >= cutoff;
+    });
+  }, [tasks, dateFilter, now]);
+
+  const handleCloseToolModal = () => {
+    router.push('/dashboard');
+  };
+
+  // Compute Task Status breakdown
+  const taskDone = filteredTasks.filter((t) => t.status === 'DONE').length;
+  const taskInProgress = filteredTasks.filter((t) => t.status === 'IN_PROGRESS').length;
+  const taskInReview = filteredTasks.filter((t) => t.status === 'IN_REVIEW').length;
+  const taskTodo = filteredTasks.filter((t) => t.status === 'TODO').length;
+  const taskBlocked = filteredTasks.filter((t) => t.status === 'BLOCKED').length;
+
+  // Compute Sprint Health breakdown
+  const sprintOnTrack = metrics?.onTrackSprints ?? 0;
+  const sprintAtRisk = metrics?.atRiskSprints ?? 0;
+  const sprintPlanned = sprints.filter((s) => s.status === 'PLANNED').length;
+  const sprintCancelled = sprints.filter((s) => s.status === 'CANCELLED').length;
+
+  // Dynamic user greeting name from auth context
+  const rawName = user?.name?.trim() || '';
+  const firstName = rawName ? rawName.split(/\s+/)[0] : 'User';
+  const greetingText = `${getTimeBasedGreeting()}, ${firstName}`;
 
   return (
     <AppShell>
-      <div className="space-y-8">
-        {/* Page Banner Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-6">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <h2 className="text-2xl font-bold tracking-tight text-slate-900">
-                AIPMS Executive Overview
-              </h2>
-              <Badge variant="info" className="text-[10px] uppercase font-bold tracking-wider">
-                Live Data Active
-              </Badge>
-            </div>
-            <p className="text-sm text-slate-500">
-              Aggregated project health, sprint velocity, task bottlenecks, and risk exposure.
+      <div className="space-y-6 pb-12">
+        {/* Executive Dashboard Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <span suppressHydrationWarning>{greetingText}</span>
+              <span className="text-xl">👋</span>
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
+              A clear view of delivery health, risks, and what needs attention.
             </p>
           </div>
 
+          {/* Action Controls */}
           <div className="flex items-center gap-3">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => void loadDashboardData()}
-              disabled={loading}
-              className="gap-1.5"
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
-            <Badge
-              variant="outline"
-              className="gap-1.5 py-1.5 px-3 border-emerald-200 bg-emerald-50/50 text-emerald-800 font-medium"
-            >
-              <Server className="h-3.5 w-3.5 text-emerald-600" />
-              API Gateway Connected (:3000)
-            </Badge>
-          </div>
-        </div>
+            {/* Date Filter Dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsFilterDropdownOpen((prev) => !prev)}
+                className="h-9 flex items-center gap-2 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 px-3.5 text-xs font-semibold text-slate-700 dark:text-slate-300 shadow-2xs hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer"
+                aria-label="Filter date range"
+              >
+                <Calendar className="h-4 w-4 text-slate-400" />
+                <span>{dateFilter}</span>
+                <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+              </button>
 
-        {/* Error Alert */}
-        {error && (
-          <div className="flex items-center justify-between gap-3 p-4 rounded-xl border border-rose-200 bg-rose-50 text-rose-800 text-sm">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-rose-600 shrink-0" />
-              <span>{error}</span>
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              className="border-rose-200 bg-white text-rose-700 hover:bg-rose-100"
-              onClick={() => void loadDashboardData()}
-            >
-              Retry
-            </Button>
-          </div>
-        )}
-
-        {/* Empty State Prompt */}
-        {!loading && projects.length === 0 && (
-          <Card className="border-dashed border-slate-300">
-            <CardContent className="flex flex-col items-center justify-center p-10 text-center space-y-3">
-              <FolderKanban className="h-10 w-10 text-slate-400" />
-              <div className="space-y-1">
-                <h3 className="text-base font-semibold text-slate-800">
-                  No Projects Configured Yet
-                </h3>
-                <p className="text-xs text-slate-500 max-w-sm">
-                  Create your first project to start tracking tasks, agile sprints, and automated risk matrix scores.
-                </p>
-              </div>
-              <Link href="/projects">
-                <Button size="sm" className="gap-1.5 mt-2">
-                  <Plus className="h-4 w-4" />
-                  Create First Project
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Overview Stat Cards Grid */}
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {statCards.map((card) => {
-            const Icon = card.icon;
-            return (
-              <Link key={card.title} href={card.href} className="block group">
-                <Card className="transition-all duration-200 hover:shadow-md hover:border-slate-300">
-                  <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                    <CardTitle className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                      {card.title}
-                    </CardTitle>
-                    <div className={`p-2 rounded-lg border ${card.bgColor}`}>
-                      <Icon className={`h-4 w-4 ${card.color}`} />
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-baseline justify-between">
-                      <div className="text-3xl font-extrabold text-slate-900">
-                        {card.value}
-                      </div>
-                      <ArrowUpRight className="h-4 w-4 text-slate-300 group-hover:text-blue-600 transition-colors" />
-                    </div>
-                    <p className="mt-1 text-xs text-slate-400">
-                      {card.subtitle}
-                    </p>
-                  </CardContent>
-                </Card>
-              </Link>
-            );
-          })}
-        </div>
-
-        {/* Secondary Dashboard Sections */}
-        <div className="grid gap-6 md:grid-cols-7">
-          {/* AI Project Insights Foundation Card */}
-          <Card className="md:col-span-4 border-slate-200">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white">
-                    <Sparkles className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-base text-slate-900">
-                      AI System Analysis & Risk Radar
-                    </CardTitle>
-                    <CardDescription className="text-xs">
-                      Predictive project health analysis powered by microservices
-                    </CardDescription>
-                  </div>
+              {isFilterDropdownOpen && (
+                <div className="absolute right-0 mt-1.5 w-40 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-lg py-1 z-20 text-xs">
+                  {(['Last 7 days', 'Last 30 days', 'Last 90 days', 'All time'] as DateFilterOption[]).map((opt) => (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => {
+                        setDateFilter(opt);
+                        setIsFilterDropdownOpen(false);
+                      }}
+                      className={`w-full text-left px-3.5 py-2 font-medium transition-colors ${
+                        dateFilter === opt
+                          ? 'bg-blue-50 text-[#0052FF] dark:bg-blue-950/40 dark:text-[#4D7CFF] font-semibold'
+                          : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  ))}
                 </div>
-                <Badge variant="outline" className="text-[10px] border-slate-200 text-slate-500">
-                  Foundation Active
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/50 p-6 text-center space-y-2">
-                <Clock className="h-8 w-8 text-slate-400 mx-auto mb-1" />
-                <h4 className="text-sm font-semibold text-slate-700">
-                  Multi-Service Aggregation Connected
-                </h4>
-                <p className="text-xs text-slate-500 max-w-md mx-auto">
-                  {projects.length > 0
-                    ? `Currently monitoring ${projects.length} project${projects.length === 1 ? '' : 's'} across tasks, sprint iterations, and risk matrices.`
-                    : 'Once project records and task dependencies are created, the system evaluates bottleneck vectors and probability-impact risk scores.'}
-                </p>
-              </div>
+              )}
+            </div>
 
-              <div className="grid grid-cols-2 gap-3 pt-2 text-xs">
-                <Link
-                  href="/tasks"
-                  className="flex items-center gap-2 p-3 rounded-md bg-slate-50 hover:bg-slate-100 border border-slate-200/60 transition-colors"
-                >
-                  <Layers className="h-4 w-4 text-blue-600 shrink-0" />
-                  <div>
-                    <div className="font-semibold text-slate-800">Task Service</div>
-                    <div className="text-[10px] text-slate-500">
-                      {loading ? '...' : `${metrics?.totalTasks ?? 0} Tasks • ${metrics?.overdueTasks ?? 0} Overdue`}
-                    </div>
-                  </div>
-                </Link>
-                <Link
-                  href="/risks"
-                  className="flex items-center gap-2 p-3 rounded-md bg-slate-50 hover:bg-slate-100 border border-slate-200/60 transition-colors"
-                >
-                  <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
-                  <div>
-                    <div className="font-semibold text-slate-800">Risk Matrix</div>
-                    <div className="text-[10px] text-slate-500">
-                      {loading ? '...' : `${metrics?.openRisks ?? 0} Open Risks`}
-                    </div>
-                  </div>
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
+            {/* Refresh Data Button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void fetchDashboardData(true)}
+              disabled={loading || isRefreshing}
+              className="h-9 rounded-xl border-slate-200 dark:border-slate-800 text-xs font-semibold gap-1.5 flex items-center px-3.5"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span>Refresh</span>
+            </Button>
 
-          {/* Quick System Links Card */}
-          <Card className="md:col-span-3 border-slate-200">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base text-slate-900">
-                AIPMS Platform Modules
-              </CardTitle>
-              <CardDescription className="text-xs">
-                Core domain services integrated via API Gateway
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2.5">
-              {[
-                { name: 'Projects Module', href: '/projects', desc: 'Project ownership & metadata', port: '3002' },
-                { name: 'Teams Module', href: '/teams', desc: 'Team membership & allocation', port: '3003' },
-                { name: 'Tasks & Dependencies', href: '/tasks', desc: 'Task hierarchy & DAG', port: '3004' },
-                { name: 'Sprints Engine', href: '/sprints', desc: 'Agile sprint iteration cycles', port: '3005' },
-                { name: 'Risk Management', href: '/risks', desc: 'Probability & score calculator', port: '3006' },
-                { name: 'Reporting Service', href: '/reports', desc: 'Aggregated project metrics', port: '3007' },
-              ].map((mod) => (
-                <Link
-                  key={mod.name}
-                  href={mod.href}
-                  className="flex items-center justify-between p-2.5 rounded-lg border border-slate-100 bg-white hover:bg-slate-50 transition-colors"
-                >
-                  <div className="flex flex-col">
-                    <span className="text-xs font-semibold text-slate-800">{mod.name}</span>
-                    <span className="text-[10px] text-slate-500">{mod.desc}</span>
-                  </div>
-                  <Badge variant="secondary" className="font-mono text-[10px] text-slate-600">
-                    :{mod.port}
-                  </Badge>
-                </Link>
-              ))}
-            </CardContent>
-          </Card>
+            {/* New Project Action (RBAC Protected) */}
+            {canCreateProject && (
+              <ProjectForm
+                mode="create"
+                ownerId={user?.id ?? ''}
+                trigger={
+                  <Button
+                    size="sm"
+                    className="h-9 rounded-xl bg-[#0052FF] hover:bg-blue-700 text-white font-semibold text-xs gap-1.5 px-4 shadow-xs hover:shadow-md transition-all flex items-center"
+                  >
+                    <Plus className="h-4 w-4 stroke-[2.5]" />
+                    <span>New Project</span>
+                  </Button>
+                }
+                onSubmit={(payload) => createProject(payload as Parameters<typeof createProject>[0])}
+                onSuccess={() => void fetchDashboardData(true)}
+              />
+            )}
+          </div>
         </div>
+
+        {/* Section Error Alert */}
+        {error && (
+          <ErrorState
+            title="Dashboard telemetry error"
+            error={error}
+            onRetry={() => void fetchDashboardData(false)}
+            variant="banner"
+          />
+        )}
+
+        {/* Render Skeleton or Main Dashboard Sections */}
+        {loading ? (
+          <DashboardSkeleton />
+        ) : (
+          <>
+            {/* 1. Executive KPI Strip */}
+            <StatCards metrics={metrics} loading={loading} />
+
+            {/* 2. Main Analytics & AI Intelligence Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Left / Center Column (2 Cols Wide) */}
+              <div className="lg:col-span-2 space-y-6">
+                {/* Row 1: Delivery Trend Chart & Sprint Health */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <DeliveryTrendChart tasks={filteredTasks} />
+                  <SprintHealthCard
+                    onTrack={sprintOnTrack}
+                    atRisk={sprintAtRisk}
+                    offTrack={sprintCancelled}
+                    notStarted={sprintPlanned}
+                  />
+                </div>
+
+                {/* Row 2: Task Distribution & Project Portfolio */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <TaskDistributionCard
+                    done={taskDone}
+                    inProgress={taskInProgress}
+                    inReview={taskInReview}
+                    todo={taskTodo}
+                    blocked={taskBlocked}
+                  />
+                  <TopProjectsTable projects={projects} tasks={tasks} />
+                </div>
+
+                {/* Row 3: Priority Risks, Upcoming Deadlines, Recent Activity */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <PriorityRisksCard risks={risks} projects={projects} />
+                  <UpcomingDeadlinesCard tasks={filteredTasks} projects={projects} />
+                  <RecentActivityCard
+                    tasks={filteredTasks}
+                    projects={projects}
+                    risks={risks}
+                    sprints={sprints}
+                  />
+                </div>
+              </div>
+
+              {/* Right Column: AI Project Intelligence Panel */}
+              <div className="lg:col-span-1">
+                <AIAssistantPanel
+                  projects={projects}
+                  projectId={
+                    projects.find((p) => tasks.some((t) => t.projectId === p.id))?.id ||
+                    projects[0]?.id
+                  }
+                />
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Interactive AI Tool Sheet Modal */}
+        {activeToolParam && (
+          <AIToolModal
+            tool={activeToolParam}
+            onClose={handleCloseToolModal}
+            projects={projects}
+            initialProjectId={
+              projects.find((p) => tasks.some((t) => t.projectId === p.id))?.id ||
+              projects[0]?.id
+            }
+          />
+        )}
       </div>
     </AppShell>
   );
 }
+
+export default function DashboardPage() {
+  return (
+    <React.Suspense
+      fallback={
+        <div className="flex h-screen items-center justify-center p-8 text-xs text-slate-400 font-mono">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-[#0052FF] animate-spin" />
+            <span>Loading AIPMS Operations Command Center...</span>
+          </div>
+        </div>
+      }
+    >
+      <DashboardContent />
+    </React.Suspense>
+  );
+}
+

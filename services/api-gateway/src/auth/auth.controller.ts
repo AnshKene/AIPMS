@@ -5,6 +5,8 @@ import {
   Headers,
   HttpCode,
   HttpStatus,
+  Param,
+  Patch,
   Post,
 } from '@nestjs/common';
 import {
@@ -16,6 +18,12 @@ import {
 import { AuthService } from './auth.service.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
+import { UpdateRoleDto } from './dto/update-role.dto.js';
+import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
+import { ResetPasswordDto } from './dto/reset-password.dto.js';
+import { ChangePasswordDto } from './dto/change-password.dto.js';
+import { Roles } from '../common/decorators/roles.decorator.js';
+import { Role } from '../common/enums/roles.enum.js';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -103,6 +111,28 @@ export class AuthController {
     return this.authService.getCurrentUser(authHeader);
   }
 
+  @Get('users')
+  @Roles(Role.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List all system users (ADMIN only)' })
+  async listUsers(@Headers('authorization') authHeader?: string) {
+    return this.authService.listUsers(authHeader);
+  }
+
+  @Patch('users/:id/role')
+  @Roles(Role.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update user role (ADMIN only)' })
+  async updateUserRole(
+    @Param('id') id: string,
+    @Body() dto: UpdateRoleDto,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return this.authService.updateUserRole(id, dto.role, authHeader);
+  }
+
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
@@ -121,5 +151,65 @@ export class AuthController {
   @ApiResponse({ status: 503, description: 'Service Unavailable - Auth service offline' })
   async logout(@Headers('authorization') authHeader?: string) {
     return this.authService.logout(authHeader);
+  }
+
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Forward forgot password request to Auth Service' })
+  @ApiResponse({
+    status: 200,
+    description: 'Password reset email requested',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'If an account exists with this email address, password reset instructions have been dispatched.' },
+      },
+    },
+  })
+  async forgotPassword(
+    @Body() dto: ForgotPasswordDto,
+    @Headers('origin') origin?: string,
+  ) {
+    return this.authService.forgotPassword(dto, origin);
+  }
+
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Forward reset password request with recovery token to Auth Service' })
+  @ApiResponse({
+    status: 200,
+    description: 'Password reset successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Password has been successfully updated.' },
+      },
+    },
+  })
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto);
+  }
+
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Forward change password request to Auth Service' })
+  @ApiResponse({
+    status: 200,
+    description: 'Password changed successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Password successfully updated.' },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Validation error or current password does not match' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async changePassword(
+    @Body() dto: ChangePasswordDto,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return this.authService.changePassword(dto, authHeader);
   }
 }

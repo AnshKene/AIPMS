@@ -4,6 +4,7 @@ import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { AppShell } from '@/components/layout/AppShell';
 import { TeamDetail } from '@/components/teams/team-detail';
+import { NotFoundState } from '@/components/ui/error-state';
 
 export default function TeamDetailPage() {
   const params = useParams();
@@ -13,7 +14,14 @@ export default function TeamDetailPage() {
   if (!teamId) {
     return (
       <AppShell>
-        <div className="p-6 text-sm text-slate-500">Invalid team ID.</div>
+        <div className="py-12">
+          <NotFoundState
+            title="Invalid Team Identifier"
+            description="The requested team identifier is invalid or missing."
+            backLink="/teams"
+            backLinkLabel="Return to Teams Workspace"
+          />
+        </div>
       </AppShell>
     );
   }

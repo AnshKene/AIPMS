@@ -16,6 +16,7 @@ export class ProxyService {
     serviceName: string,
     req: Request,
     res?: Response,
+    timeoutMs: number = 5000,
   ): Promise<unknown> {
     const url = `${baseUrl.replace(/\/+$/, '')}${req.originalUrl}`;
     const headers: Record<string, string> = {};
@@ -23,6 +24,10 @@ export class ProxyService {
     if (req.headers['authorization']) {
       headers['authorization'] = req.headers['authorization'] as string;
     }
+    if (req.headers['x-correlation-id']) {
+      headers['x-correlation-id'] = req.headers['x-correlation-id'] as string;
+    }
+    headers['connection'] = 'keep-alive';
     if (req.headers['content-type']) {
       headers['content-type'] = req.headers['content-type'] as string;
     } else if (
@@ -42,7 +47,7 @@ export class ProxyService {
         method: req.method,
         headers,
         body: hasBody ? JSON.stringify(req.body) : undefined,
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(timeoutMs),
       });
 
       let data: unknown;

@@ -26,6 +26,33 @@ async function bootstrap() {
   // Global Exception Filter
   app.useGlobalFilters(new HttpExceptionFilter());
 
+  // Security & Performance Observability Middleware
+  app.use((req: any, res: any, next: () => void) => {
+    const start = performance.now();
+    const correlationId =
+      (req.headers['x-correlation-id'] as string) ||
+      (req.headers['x-request-id'] as string) ||
+      crypto.randomUUID();
+
+    req.headers['x-correlation-id'] = correlationId;
+    res.setHeader('X-Correlation-ID', correlationId);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+
+    const origSend = res.send;
+    res.send = function (body: any) {
+      if (!res.headersSent) {
+        const duration = Math.round(performance.now() - start);
+        res.setHeader('X-Response-Time', `${duration}ms`);
+      }
+      return origSend.call(this, body);
+    };
+
+    next();
+  });
+
   // CORS Configuration
   const corsOriginEnv = configService.get<string>('CORS_ORIGIN');
   const allowedOrigins = corsOriginEnv
@@ -35,7 +62,8 @@ async function bootstrap() {
   app.enableCors({
     origin: allowedOrigins,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Correlation-ID', 'X-Request-ID'],
+    exposedHeaders: ['X-Correlation-ID', 'X-Response-Time'],
   });
 
   // Swagger Documentation Setup

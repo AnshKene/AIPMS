@@ -5,6 +5,9 @@ import {
   Headers,
   HttpCode,
   HttpStatus,
+  Param,
+  Patch,
+  Query,
   Post,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -17,6 +20,10 @@ import {
 import { AuthService } from './auth.service.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
+import { UpdateRoleDto } from './dto/update-role.dto.js';
+import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
+import { ResetPasswordDto } from './dto/reset-password.dto.js';
+import { ChangePasswordDto } from './dto/change-password.dto.js';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -102,6 +109,45 @@ export class AuthController {
     return this.authService.getCurrentUser(token);
   }
 
+  @Get('users')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List all registered system users' })
+  async listUsers() {
+    return this.authService.listUsers();
+  }
+
+  @Patch('users/:id/role')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update a user role' })
+  async updateUserRole(
+    @Param('id') id: string,
+    @Body() dto: UpdateRoleDto,
+  ) {
+    return this.authService.updateUserRole(id, dto.role);
+  }
+
+  @Get('audit-logs')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Query system audit logs' })
+  async getAuditLogs(
+    @Query('action') action?: string,
+    @Query('actorId') actorId?: string,
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.authService.getAuditLogs({
+      action,
+      actorId,
+      search,
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 20,
+    });
+  }
+
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
@@ -120,6 +166,67 @@ export class AuthController {
   async logout(@Headers('authorization') authHeader?: string) {
     const token = this.extractToken(authHeader);
     return this.authService.logout(token);
+  }
+
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Send password recovery instructions to email' })
+  @ApiResponse({
+    status: 200,
+    description: 'Password reset request dispatched successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'If an account exists with this email address, password reset instructions have been dispatched.' },
+      },
+    },
+  })
+  async forgotPassword(
+    @Body() dto: ForgotPasswordDto,
+    @Headers('origin') origin?: string,
+  ) {
+    return this.authService.forgotPassword(dto, origin);
+  }
+
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reset user password using recovery access token' })
+  @ApiResponse({
+    status: 200,
+    description: 'Password updated successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Password has been successfully updated.' },
+      },
+    },
+  })
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto);
+  }
+
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Change password for currently authenticated user' })
+  @ApiResponse({
+    status: 200,
+    description: 'Password updated successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Password successfully updated.' },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Current password incorrect or validation error' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async changePassword(
+    @Headers('authorization') authHeader: string | undefined,
+    @Body() dto: ChangePasswordDto,
+  ) {
+    const token = this.extractToken(authHeader);
+    return this.authService.changePassword(token, dto);
   }
 
   private extractToken(authHeader?: string): string {

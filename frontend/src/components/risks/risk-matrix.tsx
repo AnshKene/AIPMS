@@ -4,7 +4,7 @@ import * as React from 'react';
 import { type Risk, type RiskProbability, type RiskImpact } from '@/lib/api/risks';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import { ShieldAlert } from 'lucide-react';
+import { ShieldAlert, RefreshCw } from 'lucide-react';
 
 interface RiskMatrixProps {
   risks: Risk[];
@@ -46,48 +46,49 @@ export function RiskMatrix({
   function getCellColor(score: number, isSelected: boolean): string {
     if (score >= 6) {
       return isSelected
-        ? 'bg-rose-500 text-white border-rose-600 ring-2 ring-rose-400'
-        : 'bg-rose-100/90 text-rose-900 border-rose-300 hover:bg-rose-200';
+        ? 'bg-rose-600 text-white border-rose-700 ring-2 ring-rose-400 dark:bg-rose-600 dark:text-white'
+        : 'bg-rose-100/90 text-rose-950 border-rose-300 hover:bg-rose-200 dark:bg-rose-950/60 dark:text-rose-200 dark:border-rose-800 dark:hover:bg-rose-900/60';
     }
     if (score >= 3) {
       return isSelected
-        ? 'bg-amber-500 text-white border-amber-600 ring-2 ring-amber-400'
-        : 'bg-amber-100/90 text-amber-900 border-amber-300 hover:bg-amber-200';
+        ? 'bg-amber-600 text-white border-amber-700 ring-2 ring-amber-400 dark:bg-amber-600 dark:text-white'
+        : 'bg-amber-100/90 text-amber-950 border-amber-300 hover:bg-amber-200 dark:bg-amber-950/60 dark:text-amber-200 dark:border-amber-800 dark:hover:bg-amber-900/60';
     }
     return isSelected
-      ? 'bg-emerald-500 text-white border-emerald-600 ring-2 ring-emerald-400'
-      : 'bg-emerald-100/90 text-emerald-900 border-emerald-300 hover:bg-emerald-200';
+      ? 'bg-emerald-600 text-white border-emerald-700 ring-2 ring-emerald-400 dark:bg-emerald-600 dark:text-white'
+      : 'bg-emerald-100/90 text-emerald-950 border-emerald-300 hover:bg-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-800 dark:hover:bg-emerald-900/60';
   }
 
   return (
-    <Card className="border-slate-200 bg-white">
+    <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="space-y-1">
-            <CardTitle className="text-base font-semibold text-slate-900 flex items-center gap-2">
-              <ShieldAlert className="h-4 w-4 text-rose-600" />
-              3×3 Probability & Impact Risk Matrix
+            <CardTitle className="text-base font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <ShieldAlert className="h-4 w-4 text-rose-600 dark:text-rose-400" />
+              3×3 Probability &amp; Impact Risk Matrix
             </CardTitle>
-            <CardDescription className="text-xs text-slate-500">
-              Click any matrix cell to filter project risks by probability and impact.
+            <CardDescription className="text-xs text-slate-500 dark:text-slate-400">
+              Click any matrix cell to filter risks by probability (rows) and impact (columns).
             </CardDescription>
           </div>
           {(selectedProbability || selectedImpact) && (
             <button
               onClick={() => onSelectCell?.(undefined, undefined)}
-              className="text-xs text-indigo-600 hover:text-indigo-800 font-medium underline"
+              className="text-xs text-primary hover:underline font-medium flex items-center gap-1 self-start sm:self-auto"
             >
-              Clear cell filter
+              <RefreshCw className="h-3 w-3" />
+              Reset cell selection
             </button>
           )}
         </div>
       </CardHeader>
       <CardContent>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto pb-1">
           <div className="min-w-[340px] max-w-lg mx-auto">
             {/* Column Headers (Impact) */}
-            <div className="grid grid-cols-[80px_repeat(3,1fr)] gap-2 mb-2 text-center text-xs font-semibold text-slate-600">
-              <div></div>
+            <div className="grid grid-cols-[85px_repeat(3,1fr)] gap-2 mb-2 text-center text-xs font-semibold text-slate-600 dark:text-slate-400">
+              <div />
               <div>Low Impact</div>
               <div>Med Impact</div>
               <div>High Impact</div>
@@ -95,9 +96,9 @@ export function RiskMatrix({
 
             {/* Matrix Rows (Probability) */}
             {PROBABILITIES.map((p) => (
-              <div key={p} className="grid grid-cols-[80px_repeat(3,1fr)] gap-2 mb-2 items-center">
+              <div key={p} className="grid grid-cols-[85px_repeat(3,1fr)] gap-2 mb-2 items-center">
                 {/* Row Header */}
-                <div className="text-xs font-semibold text-slate-600 text-right pr-2">
+                <div className="text-xs font-semibold text-slate-600 dark:text-slate-400 text-right pr-2">
                   {p === 'HIGH' ? 'High Prob' : p === 'MEDIUM' ? 'Med Prob' : 'Low Prob'}
                 </div>
 
@@ -111,6 +112,7 @@ export function RiskMatrix({
                     <button
                       key={`${p}_${i}`}
                       type="button"
+                      aria-label={`Probability ${p}, Impact ${i}, Score ${score}, ${count} risks`}
                       onClick={() => {
                         if (isSelected) {
                           onSelectCell?.(undefined, undefined);
@@ -119,7 +121,7 @@ export function RiskMatrix({
                         }
                       }}
                       className={cn(
-                        'flex flex-col items-center justify-center p-3 rounded-lg border transition-all cursor-pointer text-center',
+                        'flex flex-col items-center justify-center p-3 rounded-lg border transition-all cursor-pointer text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                         getCellColor(score, isSelected),
                       )}
                     >
@@ -134,17 +136,17 @@ export function RiskMatrix({
             ))}
 
             {/* Legend */}
-            <div className="mt-4 flex items-center justify-center gap-4 text-xs text-slate-600 border-t border-slate-100 pt-3">
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-4 text-xs text-slate-600 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800 pt-3">
               <div className="flex items-center gap-1.5">
-                <span className="h-3 w-3 rounded bg-emerald-300 border border-emerald-400 inline-block" />
+                <span className="h-3 w-3 rounded bg-emerald-400 border border-emerald-500 inline-block" />
                 <span>Low Risk (1-2)</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="h-3 w-3 rounded bg-amber-300 border border-amber-400 inline-block" />
+                <span className="h-3 w-3 rounded bg-amber-400 border border-amber-500 inline-block" />
                 <span>Moderate Risk (3-4)</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="h-3 w-3 rounded bg-rose-300 border border-rose-400 inline-block" />
+                <span className="h-3 w-3 rounded bg-rose-500 border border-rose-600 inline-block" />
                 <span>Critical Risk (6-9)</span>
               </div>
             </div>

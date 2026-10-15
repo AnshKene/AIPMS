@@ -65,7 +65,7 @@ export function RiskForm({
       )}
 
       <Sheet open={isOpen} onOpenChange={handleOpenChange}>
-        <SheetContent className="w-full sm:max-w-lg overflow-y-auto p-6 space-y-6">
+        <SheetContent className="w-full sm:max-w-lg overflow-y-auto p-6 space-y-6 bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800">
           {isOpen && (
             <RiskFormContent
               key={mode === 'edit' ? (risk?.id ?? 'edit') : `new-${defaultProjectId ?? 'def'}`}
@@ -193,11 +193,11 @@ function RiskFormContent({
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
-          <ShieldAlert className="h-5 w-5 text-rose-600" />
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+          <ShieldAlert className="h-5 w-5 text-rose-600 dark:text-rose-400" />
           {mode === 'create' ? 'Log New Project Risk' : 'Edit Project Risk'}
         </h2>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-slate-500 dark:text-slate-400">
           {mode === 'create'
             ? 'Assess likelihood, severity impact, mitigation roadmap, and assign ownership.'
             : 'Update risk probability, impact metrics, status, or mitigation strategy.'}
@@ -205,7 +205,7 @@ function RiskFormContent({
       </div>
 
       {error && (
-        <div className="rounded-md bg-rose-50 border border-rose-200 p-3 text-xs text-rose-700 flex items-start gap-2">
+        <div className="rounded-md bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 p-3 text-xs text-rose-700 dark:text-rose-300 flex items-start gap-2">
           <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
           <span>{error}</span>
         </div>
@@ -215,13 +215,13 @@ function RiskFormContent({
         {/* Project Selection (Create only) */}
         {mode === 'create' && projects.length > 0 && (
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-700">
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
               Project <span className="text-rose-500">*</span>
             </label>
             <select
               value={projectId}
               onChange={(e) => setProjectId(e.target.value)}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary"
               required
             >
               <option value="" disabled>
@@ -238,7 +238,7 @@ function RiskFormContent({
 
         {/* Title */}
         <div className="space-y-1">
-          <label className="text-xs font-semibold text-slate-700">
+          <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
             Risk Title <span className="text-rose-500">*</span>
           </label>
           <Input
@@ -252,52 +252,52 @@ function RiskFormContent({
 
         {/* Description */}
         <div className="space-y-1">
-          <label className="text-xs font-semibold text-slate-700">Description</label>
+          <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Description</label>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={3}
             placeholder="Detail root cause, trigger conditions, and business implications..."
-            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-primary"
           />
         </div>
 
         {/* Probability & Impact Grid with Live Score Calculator */}
-        <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4 space-y-3">
+        <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
-              <Sparkles className="h-3.5 w-3.5 text-indigo-600" />
-              Risk Matrix Evaluation
+            <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+              <Sparkles className="h-3.5 w-3.5 text-primary" />
+              Risk Evaluation Formula (P × I)
             </span>
             <RiskScoreBadge score={liveScore} />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-medium text-slate-600">Probability</label>
+              <label className="text-xs font-medium text-slate-600 dark:text-slate-400">Probability</label>
               <select
                 value={probability}
                 onChange={(e) => setProbability(e.target.value as RiskProbability)}
-                className="w-full rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary"
               >
                 {RISK_PROBABILITIES.map((p) => (
                   <option key={p} value={p}>
-                    {p} (Score {p === 'HIGH' ? '3' : p === 'MEDIUM' ? '2' : '1'})
+                    {p} (Value {p === 'HIGH' ? '3' : p === 'MEDIUM' ? '2' : '1'})
                   </option>
                 ))}
               </select>
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-medium text-slate-600">Impact</label>
+              <label className="text-xs font-medium text-slate-600 dark:text-slate-400">Impact</label>
               <select
                 value={impact}
                 onChange={(e) => setImpact(e.target.value as RiskImpact)}
-                className="w-full rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary"
               >
                 {RISK_IMPACTS.map((i) => (
                   <option key={i} value={i}>
-                    {i} (Score {i === 'HIGH' ? '3' : i === 'MEDIUM' ? '2' : '1'})
+                    {i} (Value {i === 'HIGH' ? '3' : i === 'MEDIUM' ? '2' : '1'})
                   </option>
                 ))}
               </select>
@@ -308,11 +308,11 @@ function RiskFormContent({
         {/* Status & Due Date */}
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-700">Status</label>
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Status</label>
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value as RiskStatus)}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary"
             >
               {RISK_STATUSES.map((s) => (
                 <option key={s} value={s}>
@@ -323,7 +323,7 @@ function RiskFormContent({
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-700">Target Due Date</label>
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Target Due Date</label>
             <Input
               type="date"
               value={dueDate}
@@ -334,19 +334,19 @@ function RiskFormContent({
 
         {/* Mitigation Strategy */}
         <div className="space-y-1">
-          <label className="text-xs font-semibold text-slate-700">Mitigation Strategy</label>
+          <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Mitigation Strategy</label>
           <textarea
             value={mitigationPlan}
             onChange={(e) => setMitigationPlan(e.target.value)}
             rows={3}
             placeholder="Actionable plan to reduce probability or mitigate negative consequences..."
-            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-primary"
           />
         </div>
 
         {/* Owner ID */}
         <div className="space-y-1">
-          <label className="text-xs font-semibold text-slate-700">Owner User UUID</label>
+          <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Owner User UUID</label>
           <Input
             value={ownerId}
             onChange={(e) => setOwnerId(e.target.value)}
@@ -355,7 +355,7 @@ function RiskFormContent({
         </div>
 
         {/* Actions */}
-        <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+        <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
           <Button
             type="button"
             variant="outline"

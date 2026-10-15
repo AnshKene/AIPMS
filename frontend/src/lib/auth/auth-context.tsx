@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { apiClient, ApiError } from '@/lib/api/client';
+import { authApi } from '@/lib/api/auth';
 import {
   authStorage,
   type AuthUser,
@@ -34,6 +35,8 @@ export interface AuthContextType {
   register: (data: RegisterData) => Promise<RegisterResult>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<AuthUser | null>;
+  switchRole: (role: import('@/lib/auth/auth-storage').Role) => void;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<{ message: string }>;
 }
 
 const AuthContext = React.createContext<AuthContextType | undefined>(undefined);
@@ -171,6 +174,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [session]);
 
+  const switchRole = React.useCallback(
+    (newRole: import('@/lib/auth/auth-storage').Role) => {
+      if (!user) return;
+      const updatedUser = { ...user, role: newRole };
+      setUser(updatedUser);
+      if (session) {
+        const updatedSession = { ...session, user: updatedUser };
+        authStorage.saveSession(updatedSession);
+        setSession(updatedSession);
+      }
+    },
+    [user, session],
+  );
+
+  const changePassword = React.useCallback(
+    async (currentPassword: string, newPassword: string) => {
+      const currentToken = session?.accessToken || authStorage.getToken();
+      if (!currentToken) {
+        throw new Error('You must be signed in to change your password.');
+      }
+      return authApi.changePassword({ currentPassword, newPassword }, currentToken);
+    },
+    [session],
+  );
+
   const value = React.useMemo<AuthContextType>(
     () => ({
       user,
@@ -182,8 +210,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       register,
       logout,
       refreshUser,
+      switchRole,
+      changePassword,
     }),
-    [user, session, isLoading, login, register, logout, refreshUser],
+    [user, session, isLoading, login, register, logout, refreshUser, switchRole, changePassword],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

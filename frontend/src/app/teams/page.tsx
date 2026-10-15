@@ -1,6 +1,8 @@
 'use client';
 
 import * as React from 'react';
+import { useSearchParams } from 'next/navigation';
+import { useAuth } from '@/lib/auth/auth-context';
 import { AppShell } from '@/components/layout/AppShell';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +12,9 @@ import { ConfirmDialog } from '@/components/ui/dialog';
 import { TeamCard } from '@/components/teams/team-card';
 import { TeamForm } from '@/components/teams/team-form';
 import { TeamDetail } from '@/components/teams/team-detail';
+import { TeamsSkeleton } from '@/components/teams/TeamsSkeleton';
+import { ErrorState } from '@/components/ui/error-state';
+import { EmptyState, FilterEmptyState } from '@/components/ui/empty-state';
 import {
   listTeams,
   createTeam,
@@ -29,13 +34,18 @@ import {
   FolderKanban,
   ChevronLeft,
   ChevronRight,
-  AlertCircle,
   X,
 } from 'lucide-react';
 
 const PAGE_LIMIT = 12;
 
-export default function TeamsPage() {
+function TeamsPageContent() {
+  const searchParams = useSearchParams();
+  const initialProjectId = searchParams.get('projectId') || '';
+
+  const { user } = useAuth();
+  const canManage = user?.role === 'ADMIN' || user?.role === 'PROJECT_MANAGER';
+
   const [teams, setTeams] = React.useState<Team[]>([]);
   const [projects, setProjects] = React.useState<Project[]>([]);
   const [projectMap, setProjectMap] = React.useState<Record<string, string>>({});
@@ -47,7 +57,9 @@ export default function TeamsPage() {
   });
 
   const [searchQuery, setSearchQuery] = React.useState('');
-  const [selectedProjectId, setSelectedProjectId] = React.useState<string>('');
+  const [selectedProjectId, setSelectedProjectId] = React.useState<string>(
+    () => initialProjectId,
+  );
   const [page, setPage] = React.useState(1);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -178,39 +190,48 @@ export default function TeamsPage() {
     }
   }
 
+  const selectedProjectName = selectedProjectId ? projectMap[selectedProjectId] : null;
+
   return (
     <AppShell>
       <div className="space-y-6">
         {/* Module Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-6">
           <div className="space-y-1">
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2.5 flex-wrap">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white shadow-xs">
                 <Users className="h-5 w-5" />
               </div>
-              <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
                 Teams
               </h1>
-              <Badge variant="info">Team Service</Badge>
+              {selectedProjectName && (
+                <Badge variant="info" className="text-xs">
+                  Project: {selectedProjectName}
+                </Badge>
+              )}
             </div>
-            <p className="text-sm text-slate-500">
-              Manage the people, leads, and cross-functional teams working across your projects.
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              Organize people around projects, responsibilities, and delivery.
             </p>
           </div>
 
-          <div className="flex items-center gap-3 shrink-0">
-            <TeamForm
-              mode="create"
-              trigger={
-                <Button size="sm" className="gap-1.5 shadow-xs">
-                  <Plus className="h-4 w-4" />
-                  Create Team
-                </Button>
-              }
-              onSubmit={(payload) => createTeam(payload as CreateTeamPayload)}
-              onSuccess={handleTeamCreated}
-            />
-          </div>
+          {canManage && (
+            <div className="flex items-center gap-3 shrink-0">
+              <TeamForm
+                mode="create"
+                defaultProjectId={selectedProjectId}
+                trigger={
+                  <Button size="sm" className="gap-1.5 shadow-xs cursor-pointer">
+                    <Plus className="h-4 w-4" />
+                    Create Team
+                  </Button>
+                }
+                onSubmit={(payload) => createTeam(payload as CreateTeamPayload)}
+                onSuccess={handleTeamCreated}
+              />
+            </div>
+          )}
         </div>
 
         {/* Search & Filter Toolbar */}
@@ -224,14 +245,14 @@ export default function TeamsPage() {
                 placeholder="Search teams by name, description, or project..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 pr-8 h-9 text-xs"
+                className="pl-9 pr-8 h-9 text-xs bg-white dark:bg-slate-900"
                 aria-label="Search teams"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
                   aria-label="Clear search"
                 >
                   <X className="h-3.5 w-3.5" />
@@ -246,7 +267,7 @@ export default function TeamsPage() {
                 value={selectedProjectId}
                 onChange={handleProjectFilterChange}
                 aria-label="Filter by project"
-                className="h-9 rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:border-transparent cursor-pointer"
+                className="h-9 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1 text-xs font-medium text-slate-700 dark:text-slate-300 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 cursor-pointer"
               >
                 <option value="">All Projects</option>
                 {projects.map((p) => (
@@ -258,7 +279,7 @@ export default function TeamsPage() {
             </div>
           </div>
 
-          <div className="text-xs text-slate-500 font-medium self-end sm:self-center">
+          <div className="text-xs text-slate-500 dark:text-slate-400 font-medium self-end sm:self-center">
             {searchQuery
               ? `${filteredTeams.length} of ${teams.length} teams match`
               : `${meta.total} ${meta.total === 1 ? 'team' : 'teams'} total`}
@@ -267,96 +288,57 @@ export default function TeamsPage() {
 
         {/* Error Banner */}
         {error && (
-          <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-            <AlertCircle className="h-5 w-5 shrink-0 text-red-600" />
-            <span>{error}</span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setLoading(true);
-                listTeams({ page, limit: PAGE_LIMIT, projectId: selectedProjectId || undefined })
-                  .then((res) => {
-                    setTeams(res.data || []);
-                    setError(null);
-                  })
-                  .catch((e) => setError(formatTeamError(e)))
-                  .finally(() => setLoading(false));
-              }}
-              className="ml-auto text-xs h-7 bg-white"
-            >
-              Retry
-            </Button>
-          </div>
+          <ErrorState
+            title="Unable to load teams workspace"
+            error={error}
+            onRetry={() => {
+              setLoading(true);
+              listTeams({ page, limit: PAGE_LIMIT, projectId: selectedProjectId || undefined })
+                .then((res) => {
+                  setTeams(res.data || []);
+                  setError(null);
+                })
+                .catch((e) => setError(formatTeamError(e)))
+                .finally(() => setLoading(false));
+            }}
+            variant="card"
+          />
         )}
 
         {/* Main Content Area */}
         {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
-              <div
-                key={i}
-                className="rounded-xl border border-slate-200 bg-white p-5 space-y-4 animate-pulse"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-lg bg-slate-200" />
-                  <div className="space-y-1.5 flex-1">
-                    <div className="h-4 w-28 bg-slate-200 rounded" />
-                    <div className="h-3 w-20 bg-slate-100 rounded" />
-                  </div>
-                </div>
-                <div className="h-8 bg-slate-100 rounded" />
-                <div className="pt-3 border-t border-slate-100 flex justify-between items-center">
-                  <div className="h-4 w-16 bg-slate-200 rounded" />
-                  <div className="h-6 w-14 bg-slate-200 rounded" />
-                </div>
-              </div>
-            ))}
-          </div>
+          <TeamsSkeleton />
         ) : filteredTeams.length === 0 ? (
-          searchQuery ? (
-            <div className="rounded-xl border border-dashed border-slate-200 bg-white p-12 text-center space-y-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-50 text-slate-400 mx-auto">
-                <Search className="h-6 w-6" />
-              </div>
-              <h3 className="text-base font-semibold text-slate-800">
-                No teams match your search
-              </h3>
-              <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                No teams found matching &ldquo;{searchQuery}&rdquo;. Try adjusting your query or project filter.
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setSearchQuery('')}
-                className="mt-2"
-              >
-                Clear Search
-              </Button>
-            </div>
+          searchQuery || selectedProjectId ? (
+            <FilterEmptyState
+              onClearFilters={() => {
+                setSearchQuery('');
+                setSelectedProjectId('');
+              }}
+              description="No teams match your search query or selected project filter."
+            />
           ) : (
-            <div className="rounded-xl border border-dashed border-slate-200 bg-white p-12 text-center space-y-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-blue-600 mx-auto">
-                <Users className="h-6 w-6" />
-              </div>
-              <h3 className="text-base font-semibold text-slate-800">
-                No teams yet
-              </h3>
-              <p className="text-xs text-slate-500 max-w-md mx-auto">
-                Create a team to start organizing people, leads, and member assignments around your project goals.
-              </p>
-              <TeamForm
-                mode="create"
-                trigger={
-                  <Button size="sm" className="gap-1.5 mt-2">
-                    <Plus className="h-4 w-4" />
-                    Create First Team
-                  </Button>
-                }
-                onSubmit={(payload) => createTeam(payload as CreateTeamPayload)}
-                onSuccess={handleTeamCreated}
-              />
-            </div>
+            <EmptyState
+              icon={<Users className="h-6 w-6" />}
+              title="No teams yet"
+              description="Create a team to organize project members, roles, and responsibilities."
+              action={
+                canManage ? (
+                  <TeamForm
+                    mode="create"
+                    defaultProjectId={selectedProjectId}
+                    trigger={
+                      <Button size="sm" className="gap-1.5 cursor-pointer">
+                        <Plus className="h-4 w-4" />
+                        Create First Team
+                      </Button>
+                    }
+                    onSubmit={(payload) => createTeam(payload as CreateTeamPayload)}
+                    onSuccess={handleTeamCreated}
+                  />
+                ) : undefined
+              }
+            />
           )
         ) : (
           <div className="space-y-6">
@@ -366,6 +348,7 @@ export default function TeamsPage() {
                   key={team.id}
                   team={team}
                   projectName={projectMap[team.projectId]}
+                  canManage={canManage}
                   onSelect={(t) => {
                     setActiveTeam(t);
                     setDetailOpen(true);
@@ -381,7 +364,7 @@ export default function TeamsPage() {
 
             {/* Pagination Controls */}
             {meta.totalPages > 1 && !searchQuery && (
-              <div className="flex items-center justify-between pt-4 border-t border-slate-200 text-xs text-slate-500">
+              <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400">
                 <span>
                   Showing page {meta.page} of {meta.totalPages} ({meta.total} total teams)
                 </span>
@@ -437,37 +420,49 @@ export default function TeamsPage() {
         </Sheet>
 
         {/* Edit Modal / Sheet for Card Trigger (Clean Controlled Mode) */}
-        <TeamForm
-          mode="edit"
-          team={editingTeam}
-          open={editingTeam !== null}
-          onOpenChange={(isOpen) => {
-            if (!isOpen) setEditingTeam(null);
-          }}
-          onSubmit={(payload) =>
-            updateTeam(editingTeam!.id, payload as UpdateTeamPayload)
-          }
-          onSuccess={(updated) => {
-            handleTeamUpdated(updated);
-            setEditingTeam(null);
-          }}
-        />
+        {canManage && (
+          <TeamForm
+            mode="edit"
+            team={editingTeam}
+            open={editingTeam !== null}
+            onOpenChange={(isOpen) => {
+              if (!isOpen) setEditingTeam(null);
+            }}
+            onSubmit={(payload) =>
+              updateTeam(editingTeam!.id, payload as UpdateTeamPayload)
+            }
+            onSuccess={(updated) => {
+              handleTeamUpdated(updated);
+              setEditingTeam(null);
+            }}
+          />
+        )}
 
         {/* Accessible Delete Confirmation Dialog */}
-        <ConfirmDialog
-          open={deletingTeam !== null}
-          onOpenChange={(open) => {
-            if (!open) setDeletingTeam(null);
-          }}
-          title={`Delete "${deletingTeam?.name || 'Team'}"?`}
-          description="This will permanently delete this team and remove all member associations. Existing tasks and project records will remain intact. This action cannot be undone."
-          confirmLabel="Delete Team"
-          variant="destructive"
-          loading={deleteLoading}
-          error={deleteError}
-          onConfirm={handleConfirmDelete}
-        />
+        {canManage && (
+          <ConfirmDialog
+            open={deletingTeam !== null}
+            onOpenChange={(open) => {
+              if (!open) setDeletingTeam(null);
+            }}
+            title={`Delete "${deletingTeam?.name || 'Team'}"?`}
+            description="This will permanently delete this team and remove all member associations. Existing tasks and project records will remain intact. This action cannot be undone."
+            confirmLabel="Delete Team"
+            variant="destructive"
+            loading={deleteLoading}
+            error={deleteError}
+            onConfirm={handleConfirmDelete}
+          />
+        )}
       </div>
     </AppShell>
+  );
+}
+
+export default function TeamsPage() {
+  return (
+    <React.Suspense fallback={<AppShell><TeamsSkeleton /></AppShell>}>
+      <TeamsPageContent />
+    </React.Suspense>
   );
 }

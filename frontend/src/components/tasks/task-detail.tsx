@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import {
   Sheet,
   SheetContent,
@@ -11,6 +12,7 @@ import { Separator } from '@/components/ui/separator';
 import { TaskPriorityBadge } from './task-badges';
 import { TaskForm } from './task-form';
 import { TaskDependencies } from './task-dependencies';
+import { useAuth } from '@/lib/auth/auth-context';
 import {
   getTask,
   updateTask,
@@ -29,10 +31,11 @@ import {
   Users,
   GitMerge,
   AlertTriangle,
+  Zap,
+  ExternalLink,
+  Clock,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—';
@@ -41,6 +44,26 @@ function formatDate(iso: string | null | undefined): string {
     day: 'numeric',
     year: 'numeric',
   });
+}
+
+function getDueDateStatus(dueDateStr: string | null | undefined): { label: string; className: string } | null {
+  if (!dueDateStr) return null;
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const due = new Date(dueDateStr);
+  due.setHours(0, 0, 0, 0);
+  const diffDays = Math.ceil((due.getTime() - now.getTime()) / (1000 * 3600 * 24));
+
+  if (diffDays < 0) {
+    return { label: 'OVERDUE', className: 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 font-bold border-rose-200 dark:border-rose-900' };
+  }
+  if (diffDays === 0) {
+    return { label: 'DUE TODAY', className: 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 font-bold border-amber-200 dark:border-amber-900' };
+  }
+  if (diffDays <= 3) {
+    return { label: 'DUE SOON', className: 'bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-900' };
+  }
+  return { label: 'UPCOMING', className: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700' };
 }
 
 const STATUS_LABELS: Record<TaskStatus, string> = {
@@ -52,9 +75,7 @@ const STATUS_LABELS: Record<TaskStatus, string> = {
 };
 
 const SELECT_CLASS =
-  'flex h-8 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:border-transparent disabled:cursor-not-allowed disabled:opacity-50';
-
-// ─── Confirm Dialog ───────────────────────────────────────────────────────────
+  'flex h-8 rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2 py-1 text-xs font-semibold text-slate-800 dark:text-slate-200 shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 disabled:cursor-not-allowed disabled:opacity-50';
 
 function ConfirmDeleteDialog({
   onConfirm,
@@ -71,19 +92,19 @@ function ConfirmDeleteDialog({
         className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs"
         onClick={onCancel}
       />
-      <div className="relative z-10 w-full max-w-sm mx-4 rounded-xl border border-slate-200 bg-white p-6 shadow-xl space-y-4">
+      <div className="relative z-10 w-full max-w-sm mx-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-xl space-y-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-50 shrink-0">
-            <AlertTriangle className="h-5 w-5 text-red-600" />
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-rose-50 dark:bg-rose-950/40 text-rose-600 border border-rose-200/60 dark:border-rose-900/60 shrink-0">
+            <AlertTriangle className="h-5 w-5" />
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-slate-900">Delete task?</h3>
-            <p className="text-xs text-slate-500 mt-0.5">
-              This will permanently remove this task and all its dependencies.
+            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Delete Task?</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              This action cannot be undone. Task data and dependencies will be permanently deleted.
             </p>
           </div>
         </div>
-        <div className="flex justify-end gap-3">
+        <div className="flex justify-end gap-2">
           <Button
             type="button"
             variant="outline"
@@ -101,15 +122,13 @@ function ConfirmDeleteDialog({
             disabled={submitting}
           >
             {submitting && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
-            Delete task
+            Delete Task
           </Button>
         </div>
       </div>
     </div>
   );
 }
-
-// ─── Detail Field ─────────────────────────────────────────────────────────────
 
 function DetailField({
   icon: Icon,
@@ -123,15 +142,13 @@ function DetailField({
   return (
     <div className="flex items-start gap-3">
       <Icon className="h-4 w-4 text-slate-400 mt-0.5 shrink-0" />
-      <div className="min-w-0">
-        <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wide">{label}</p>
-        <div className="text-sm text-slate-700 mt-0.5">{children}</div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{label}</p>
+        <div className="text-xs font-medium text-slate-800 dark:text-slate-200 mt-0.5">{children}</div>
       </div>
     </div>
   );
 }
-
-// ─── Task Detail Panel ────────────────────────────────────────────────────────
 
 interface TaskDetailProps {
   taskId: string;
@@ -146,6 +163,9 @@ export function TaskDetail({
   onTaskUpdated,
   onTaskDeleted,
 }: TaskDetailProps) {
+  const { user } = useAuth();
+  const canManageTask = user?.role === 'ADMIN' || user?.role === 'PROJECT_MANAGER' || user?.role === 'TEAM_MEMBER';
+
   const [open, setOpen] = React.useState(false);
   const [task, setTask] = React.useState<Task | null>(null);
   const [loading, setLoading] = React.useState(false);
@@ -154,7 +174,6 @@ export function TaskDetail({
   const [deleting, setDeleting] = React.useState(false);
   const [statusUpdating, setStatusUpdating] = React.useState(false);
 
-  // Load task when panel opens
   React.useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -180,7 +199,9 @@ export function TaskDetail({
     }
 
     fetchTask();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [taskId, open]);
 
   async function handleStatusChange(e: React.ChangeEvent<HTMLSelectElement>) {
@@ -192,7 +213,7 @@ export function TaskDetail({
       setTask(updated);
       onTaskUpdated?.(updated);
     } catch {
-      // revert shown value silently — task state stays as-is
+      // revert silently
     } finally {
       setStatusUpdating(false);
     }
@@ -219,11 +240,13 @@ export function TaskDetail({
     onTaskUpdated?.(updated);
   }
 
+  const dueDateBadge = getDueDateStatus(task?.dueDate);
+
   return (
     <>
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger asChild>{trigger}</SheetTrigger>
-        <SheetContent className="w-full max-w-lg overflow-y-auto">
+        <SheetContent className="w-full max-w-lg overflow-y-auto bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
           {loading && (
             <div className="flex items-center justify-center py-20">
               <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
@@ -231,104 +254,142 @@ export function TaskDetail({
           )}
 
           {!loading && error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-6 text-center space-y-2 mt-4">
-              <p className="text-sm font-semibold text-red-700">Failed to load task</p>
-              <p className="text-xs text-red-500">{error}</p>
+            <div className="rounded-2xl border border-rose-200 dark:border-rose-900/50 bg-rose-50/50 dark:bg-rose-950/20 px-4 py-6 text-center space-y-2 mt-4">
+              <p className="text-sm font-semibold text-rose-800 dark:text-rose-400">Failed to load task</p>
+              <p className="text-xs text-rose-600 dark:text-rose-300">{error}</p>
             </div>
           )}
 
           {!loading && task && (
             <div className="space-y-5">
               {/* Header */}
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <div className="flex items-start justify-between gap-3">
-                  <h2 className="text-base font-bold text-slate-900 leading-snug flex-1">
-                    {task.title}
-                  </h2>
-
-                  {/* Action buttons */}
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <TaskForm
-                      mode="edit"
-                      task={task}
-                      trigger={
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="gap-1.5 text-xs"
-                          id={`edit-task-${task.id}`}
-                          aria-label="Edit task"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                          Edit
-                        </Button>
-                      }
-                      onSubmit={(payload) => updateTask(task.id, payload)}
-                      onSuccess={handleTaskUpdated}
-                    />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-1.5 text-xs text-slate-700 hover:text-red-600 hover:border-red-200"
-                      onClick={() => setConfirmDelete(true)}
-                      id={`delete-task-${task.id}`}
-                      aria-label="Delete task"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                  <div className="space-y-1 min-w-0">
+                    <p className="text-xs font-mono text-slate-400 font-semibold uppercase tracking-wider">
+                      TASK-{task.id.slice(0, 8)}
+                    </p>
+                    <h2 className="text-base font-bold text-slate-900 dark:text-slate-100 leading-snug">
+                      {task.title}
+                    </h2>
                   </div>
+
+                  {/* Actions (RBAC protected) */}
+                  {canManageTask && (
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <TaskForm
+                        mode="edit"
+                        task={task}
+                        trigger={
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5 text-xs"
+                            id={`edit-task-${task.id}`}
+                            aria-label="Edit task"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            Edit
+                          </Button>
+                        }
+                        onSubmit={(payload) => updateTask(task.id, payload)}
+                        onSuccess={handleTaskUpdated}
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 text-xs text-slate-700 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-200 dark:hover:border-rose-900"
+                        onClick={() => setConfirmDelete(true)}
+                        id={`delete-task-${task.id}`}
+                        aria-label="Delete task"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
 
-                {/* Inline status change */}
-                <div className="flex items-center gap-3">
-                  <select
-                    value={task.status}
-                    onChange={handleStatusChange}
-                    disabled={statusUpdating}
-                    aria-label="Task status"
-                    className={cn(SELECT_CLASS, 'w-auto')}
-                  >
-                    {TASK_STATUSES.map((s) => (
-                      <option key={s} value={s}>
-                        {STATUS_LABELS[s]}
-                      </option>
-                    ))}
-                  </select>
-                  {statusUpdating && (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />
+                {/* Status & Priority Row */}
+                <div className="flex items-center justify-between flex-wrap gap-2 pt-1">
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={task.status}
+                      onChange={handleStatusChange}
+                      disabled={statusUpdating || !canManageTask}
+                      aria-label="Task status"
+                      className={cn(SELECT_CLASS, 'w-auto')}
+                    >
+                      {TASK_STATUSES.map((s) => (
+                        <option key={s} value={s}>
+                          {STATUS_LABELS[s]}
+                        </option>
+                      ))}
+                    </select>
+                    {statusUpdating && (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />
+                    )}
+                    <TaskPriorityBadge priority={task.priority} />
+                  </div>
+
+                  {dueDateBadge && (
+                    <span className={cn('text-[10px] px-2 py-0.5 rounded-full border', dueDateBadge.className)}>
+                      {dueDateBadge.label}
+                    </span>
                   )}
-                  <TaskPriorityBadge priority={task.priority} />
                 </div>
               </div>
 
-              <Separator />
+              <Separator className="bg-slate-100 dark:bg-slate-800" />
 
               {/* Description */}
-              {task.description && (
-                <div className="space-y-1">
-                  <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wide">
-                    Description
-                  </p>
-                  <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
+              <div className="space-y-1.5">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  Description
+                </p>
+                {task.description ? (
+                  <p className="text-xs text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
                     {task.description}
                   </p>
-                </div>
-              )}
-              {!task.description && (
-                <p className="text-xs text-slate-400 italic">No description provided.</p>
-              )}
+                ) : (
+                  <p className="text-xs text-slate-400 dark:text-slate-500 italic">No description provided.</p>
+                )}
+              </div>
 
-              <Separator />
+              <Separator className="bg-slate-100 dark:bg-slate-800" />
 
-              {/* Metadata fields */}
-              <div className="space-y-4">
-                <DetailField icon={FolderKanban} label="Project">
-                  <span className="font-mono text-xs text-slate-500 break-all">{task.projectId}</span>
+              {/* Context Links & Fields */}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <DetailField icon={FolderKanban} label="Project Context">
+                  {task.projectId ? (
+                    <Link
+                      href={`/projects/${task.projectId}`}
+                      className="text-xs font-semibold text-blue-600 hover:underline dark:text-blue-400 inline-flex items-center gap-1"
+                    >
+                      View Project
+                      <ExternalLink className="h-3 w-3" />
+                    </Link>
+                  ) : (
+                    <span className="text-slate-400">Standalone task</span>
+                  )}
+                </DetailField>
+
+                <DetailField icon={Zap} label="Sprint Context">
+                  {task.sprintId ? (
+                    <Link
+                      href={`/sprints?projectId=${task.projectId}`}
+                      className="text-xs font-semibold text-purple-600 hover:underline dark:text-purple-400 inline-flex items-center gap-1"
+                    >
+                      Sprint Details
+                      <ExternalLink className="h-3 w-3" />
+                    </Link>
+                  ) : (
+                    <span className="text-slate-400">No sprint assigned</span>
+                  )}
                 </DetailField>
 
                 <DetailField icon={User} label="Assignee">
                   {task.assigneeId ? (
-                    <span className="font-mono text-xs text-slate-500 break-all">
+                    <span className="font-mono text-xs text-slate-700 dark:text-slate-300">
                       {task.assigneeId}
                     </span>
                   ) : (
@@ -338,51 +399,41 @@ export function TaskDetail({
 
                 <DetailField icon={Users} label="Team">
                   {task.teamId ? (
-                    <span className="font-mono text-xs text-slate-500 break-all">{task.teamId}</span>
+                    <span className="font-mono text-xs text-slate-700 dark:text-slate-300">
+                      {task.teamId}
+                    </span>
                   ) : (
-                    <span className="text-slate-400">No team</span>
+                    <span className="text-slate-400">No team assigned</span>
                   )}
                 </DetailField>
 
                 <DetailField icon={CalendarDays} label="Due Date">
-                  <span className={task.dueDate ? 'text-slate-700' : 'text-slate-400'}>
-                    {task.dueDate ? formatDate(task.dueDate) : 'No due date'}
-                  </span>
+                  <span>{task.dueDate ? formatDate(task.dueDate) : 'No due date'}</span>
                 </DetailField>
 
-                <DetailField icon={CalendarDays} label="Start Date">
-                  <span className={task.startDate ? 'text-slate-700' : 'text-slate-400'}>
-                    {task.startDate ? formatDate(task.startDate) : 'No start date'}
-                  </span>
+                <DetailField icon={Clock} label="Start Date">
+                  <span>{task.startDate ? formatDate(task.startDate) : 'Unscheduled'}</span>
                 </DetailField>
               </div>
 
-              <Separator />
+              <Separator className="bg-slate-100 dark:bg-slate-800" />
 
-              {/* Dependencies */}
+              {/* Task Dependencies */}
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <GitMerge className="h-4 w-4 text-slate-400" />
-                  <p className="text-sm font-semibold text-slate-700">Dependencies</p>
+                  <p className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
+                    Task Dependencies & Blockers
+                  </p>
                 </div>
                 <TaskDependencies taskId={task.id} />
               </div>
-
-              {/* Error from delete */}
-              {error && (
-                <p
-                  role="alert"
-                  className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
-                >
-                  {error}
-                </p>
-              )}
             </div>
           )}
         </SheetContent>
       </Sheet>
 
-      {/* Delete confirmation — rendered outside Sheet to avoid z-index issues */}
+      {/* Confirmation modal */}
       {confirmDelete && (
         <ConfirmDeleteDialog
           onConfirm={handleDelete}

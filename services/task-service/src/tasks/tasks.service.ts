@@ -34,14 +34,29 @@ export class TasksService {
     });
   }
 
+  private readonly clientCache = new Map<string, { client: SupabaseClient; lastUsed: number }>();
+
   private getSupabaseClient(authHeader?: string): SupabaseClient {
     if (authHeader && authHeader.trim().length > 0) {
+      const trimmed = authHeader.trim();
+      const cached = this.clientCache.get(trimmed);
+      const now = Date.now();
+      if (cached && now - cached.lastUsed < 15 * 60 * 1000) {
+        cached.lastUsed = now;
+        return cached.client;
+      }
+
+      if (this.clientCache.size >= 100) {
+        const oldestKey = this.clientCache.keys().next().value;
+        if (oldestKey) this.clientCache.delete(oldestKey);
+      }
+
       const url = this.configService.get<string>('supabase.url') ?? '';
       const anonKey = this.configService.get<string>('supabase.anonKey') ?? '';
-      return createClient(url, anonKey, {
+      const client = createClient(url, anonKey, {
         global: {
           headers: {
-            Authorization: authHeader,
+            Authorization: trimmed,
           },
         },
         auth: {
@@ -49,6 +64,9 @@ export class TasksService {
           persistSession: false,
         },
       });
+
+      this.clientCache.set(trimmed, { client, lastUsed: now });
+      return client;
     }
     return this.supabase;
   }
@@ -104,7 +122,7 @@ export class TasksService {
 
   async findAll(query: QueryTaskDto, authHeader?: string) {
     const page = Math.max(1, query.page ?? 1);
-    const limit = Math.max(1, Math.min(100, query.limit ?? 20));
+    const limit = Math.max(1, Math.min(500, query.limit ?? 20));
     const offset = (page - 1) * limit;
 
     const client = this.getSupabaseClient(authHeader);

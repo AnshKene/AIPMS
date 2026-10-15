@@ -4,10 +4,13 @@
  * Isolated from React components and safe for Next.js SSR.
  */
 
+export type Role = 'ADMIN' | 'PROJECT_MANAGER' | 'TEAM_MEMBER' | 'VIEWER';
+
 export interface AuthUser {
   id: string;
   email: string;
   name: string | null;
+  role?: Role;
   createdAt?: string;
 }
 
