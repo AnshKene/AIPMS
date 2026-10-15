@@ -153,14 +153,14 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // Determine assigned role with precedence: existing stored record > user_metadata > admin check > default
+    // Determine assigned role with precedence: existing stored record > trusted app_metadata > admin check > default
     const existing = Array.from(this.usersMap.values()).find(
       (u) => u.email.toLowerCase() === email.toLowerCase(),
     );
 
     const assignedRole: Role =
       existing?.role ||
-      (data.user.user_metadata?.role as Role) ||
+      (data.user.app_metadata?.role as Role) ||
       (email.toLowerCase() === 'admin@aipms.com' || email.toLowerCase() === 'ak@gmail.com'
         ? Role.ADMIN
         : Role.TEAM_MEMBER);
@@ -202,7 +202,7 @@ export class AuthService {
 
     const assignedRole: Role =
       existing?.role ||
-      (data.user.user_metadata?.role as Role) ||
+      (data.user.app_metadata?.role as Role) ||
       (email.toLowerCase() === 'admin@aipms.com' || email.toLowerCase() === 'ak@gmail.com'
         ? Role.ADMIN
         : Role.TEAM_MEMBER);
