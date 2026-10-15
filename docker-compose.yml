@@ -1,0 +1,207 @@
+name: aipms
+
+services:
+  # ─── 1. Authentication Service ──────────────────────────────────────────────
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: aipms-auth-service
+    environment:
+      PORT: 3001
+      NODE_ENV: production
+      CORS_ORIGIN: http://localhost:3000,http://localhost:3008
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+    restart: unless-stopped
+    networks:
+      - aipms-network
+
+  # ─── 2. Project Management Service ─────────────────────────────────────────
+  project-service:
+    build:
+      context: ./services/project-service
+      dockerfile: Dockerfile
+    container_name: aipms-project-service
+    environment:
+      PORT: 3002
+      NODE_ENV: production
+      CORS_ORIGIN: http://localhost:3000,http://localhost:3008
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+    restart: unless-stopped
+    networks:
+      - aipms-network
+
+  # ─── 3. Team Management Service ────────────────────────────────────────────
+  team-service:
+    build:
+      context: ./services/team-service
+      dockerfile: Dockerfile
+    container_name: aipms-team-service
+    environment:
+      PORT: 3003
+      NODE_ENV: production
+      CORS_ORIGIN: http://localhost:3000,http://localhost:3008
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+    restart: unless-stopped
+    networks:
+      - aipms-network
+
+  # ─── 4. Task Management Service ────────────────────────────────────────────
+  task-service:
+    build:
+      context: ./services/task-service
+      dockerfile: Dockerfile
+    container_name: aipms-task-service
+    environment:
+      PORT: 3004
+      NODE_ENV: production
+      CORS_ORIGIN: http://localhost:3000,http://localhost:3008
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+    restart: unless-stopped
+    networks:
+      - aipms-network
+
+  # ─── 5. Sprint Tracking Service ────────────────────────────────────────────
+  sprint-service:
+    build:
+      context: ./services/sprint-service
+      dockerfile: Dockerfile
+    container_name: aipms-sprint-service
+    environment:
+      PORT: 3005
+      NODE_ENV: production
+      CORS_ORIGIN: http://localhost:3000,http://localhost:3008
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+    restart: unless-stopped
+    networks:
+      - aipms-network
+
+  # ─── 6. Risk Analysis Service ──────────────────────────────────────────────
+  risk-service:
+    build:
+      context: ./services/risk-service
+      dockerfile: Dockerfile
+    container_name: aipms-risk-service
+    environment:
+      PORT: 3006
+      NODE_ENV: production
+      CORS_ORIGIN: http://localhost:3000,http://localhost:3008
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+    restart: unless-stopped
+    networks:
+      - aipms-network
+
+  # ─── 7. Reporting & Analytics Service ──────────────────────────────────────
+  reporting-service:
+    build:
+      context: ./services/reporting-service
+      dockerfile: Dockerfile
+    container_name: aipms-reporting-service
+    environment:
+      PORT: 3007
+      NODE_ENV: production
+      CORS_ORIGIN: http://localhost:3000,http://localhost:3008
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+    restart: unless-stopped
+    networks:
+      - aipms-network
+
+  # ─── 8. AI Intelligence Service (Ollama Integration) ───────────────────────
+  ai-service:
+    build:
+      context: ./services/ai-service
+      dockerfile: Dockerfile
+    container_name: aipms-ai-service
+    environment:
+      PORT: 3009
+      NODE_ENV: production
+      CORS_ORIGIN: http://localhost:3000,http://localhost:3008
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
+      OLLAMA_TIMEOUT_MS: ${OLLAMA_TIMEOUT_MS:-30000}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    networks:
+      - aipms-network
+
+  # ─── 9. API Gateway ────────────────────────────────────────────────────────
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    container_name: aipms-api-gateway
+    ports:
+      - "${GATEWAY_PORT:-3000}:3000"
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+      CORS_ORIGIN: http://localhost:3000,http://localhost:3008
+      AUTH_SERVICE_URL: http://auth-service:3001
+      PROJECT_SERVICE_URL: http://project-service:3002
+      TEAM_SERVICE_URL: http://team-service:3003
+      TASK_SERVICE_URL: http://task-service:3004
+      SPRINT_SERVICE_URL: http://sprint-service:3005
+      RISK_SERVICE_URL: http://risk-service:3006
+      REPORTING_SERVICE_URL: http://reporting-service:3007
+      AI_SERVICE_URL: http://ai-service:3009
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      project-service:
+        condition: service_healthy
+      team-service:
+        condition: service_healthy
+      task-service:
+        condition: service_healthy
+      sprint-service:
+        condition: service_healthy
+      risk-service:
+        condition: service_healthy
+      reporting-service:
+        condition: service_healthy
+      ai-service:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - aipms-network
+
+  # ─── 10. Frontend (Next.js Application) ────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/api}
+        NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_URL:-}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+    container_name: aipms-frontend
+    ports:
+      - "${FRONTEND_PORT:-3008}:3008"
+    environment:
+      PORT: 3008
+      NODE_ENV: production
+      INTERNAL_API_URL: http://api-gateway:3000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/api}
+      NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_URL:-}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - aipms-network
+
+networks:
+  aipms-network:
+    name: aipms-network
+    driver: bridge

@@ -1,0 +1,215 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-inter), Inter, system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-mono), "JetBrains Mono", monospace;
+  --font-display: var(--font-display), Calistoga, serif;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-secondary: var(--primary-secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-danger: var(--danger);
+  --color-danger-foreground: var(--danger-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-3xl: 24px;
+}
+
+@layer base {
+  :root {
+    --background: #FAFAFA;
+    --foreground: #0F172A;
+    --card: #FFFFFF;
+    --card-foreground: #0F172A;
+    --popover: #FFFFFF;
+    --popover-foreground: #0F172A;
+
+    --primary: #0052FF;
+    --primary-secondary: #4D7CFF;
+    --primary-foreground: #FFFFFF;
+
+    --secondary: #F1F5F9;
+    --secondary-foreground: #0F172A;
+
+    --muted: #F1F5F9;
+    --muted-foreground: #64748B;
+
+    --accent: #F1F5F9;
+    --accent-foreground: #0F172A;
+
+    --destructive: #EF4444;
+    --destructive-foreground: #FFFFFF;
+
+    --border: #E2E8F0;
+    --input: #E2E8F0;
+    --ring: #0052FF;
+
+    --success: #10B981;
+    --success-foreground: #FFFFFF;
+    --warning: #F59E0B;
+    --warning-foreground: #FFFFFF;
+    --danger: #EF4444;
+    --danger-foreground: #FFFFFF;
+    --info: #3B82F6;
+    --info-foreground: #FFFFFF;
+  }
+
+  .dark {
+    --background: #0F172A;
+    --foreground: #F8FAFC;
+    --card: #1E293B;
+    --card-foreground: #F8FAFC;
+    --popover: #1E293B;
+    --popover-foreground: #F8FAFC;
+
+    --primary: #4D7CFF;
+    --primary-secondary: #0052FF;
+    --primary-foreground: #FFFFFF;
+
+    --secondary: #334155;
+    --secondary-foreground: #F8FAFC;
+
+    --muted: #1E293B;
+    --muted-foreground: #94A3B8;
+
+    --accent: #1E293B;
+    --accent-foreground: #F8FAFC;
+
+    --destructive: #EF4444;
+    --destructive-foreground: #FFFFFF;
+
+    --border: #334155;
+    --input: #334155;
+    --ring: #4D7CFF;
+
+    --success: #10B981;
+    --success-foreground: #FFFFFF;
+    --warning: #F59E0B;
+    --warning-foreground: #FFFFFF;
+    --danger: #EF4444;
+    --danger-foreground: #FFFFFF;
+    --info: #4D7CFF;
+    --info-foreground: #FFFFFF;
+  }
+}
+
+@layer utilities {
+  /* Marketing Display Typography */
+  .text-display-hero {
+    font-family: var(--font-display);
+    font-size: clamp(2.25rem, 5vw, 3.75rem);
+    line-height: 1.1;
+    font-weight: 400;
+    letter-spacing: -0.02em;
+  }
+
+  .text-display-heading {
+    font-family: var(--font-display);
+    font-size: clamp(1.75rem, 3.5vw, 2.5rem);
+    line-height: 1.2;
+    font-weight: 400;
+    letter-spacing: -0.01em;
+  }
+
+  /* Application Typography Hierarchy */
+  .text-page-title {
+    font-family: var(--font-sans);
+    font-size: 1.875rem; /* 30px */
+    line-height: 2.25rem; /* 36px */
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  .text-section-heading {
+    font-family: var(--font-sans);
+    font-size: 1.375rem; /* 22px */
+    line-height: 1.75rem; /* 28px */
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .text-card-heading {
+    font-family: var(--font-sans);
+    font-size: 1.0625rem; /* 17px */
+    line-height: 1.5rem; /* 24px */
+    font-weight: 600;
+  }
+
+  .text-body {
+    font-family: var(--font-sans);
+    font-size: 0.9375rem; /* 15px */
+    line-height: 1.5rem; /* 24px */
+    font-weight: 400;
+  }
+
+  .text-secondary {
+    font-family: var(--font-sans);
+    font-size: 0.84375rem; /* 13.5px */
+    line-height: 1.25rem; /* 20px */
+    font-weight: 400;
+  }
+
+  .text-metadata {
+    font-family: var(--font-sans);
+    font-size: 0.75rem; /* 12px */
+    line-height: 1rem; /* 16px */
+    font-weight: 500;
+  }
+
+  .text-tech {
+    font-family: var(--font-mono);
+    font-size: 0.75rem; /* 12px */
+    line-height: 1rem; /* 16px */
+    font-weight: 500;
+    letter-spacing: 0.02em;
+  }
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+*:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--background), 0 0 0 4px var(--ring);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

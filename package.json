@@ -1,0 +1,15 @@
+{
+  "scripts": {
+    "dev:all": "npx concurrently -k -n \"gateway,auth,project,team,task,sprint,risk,report,ai,frontend\" -c \"blue,green,magenta,cyan,yellow,red,gray,white,blueBright,magentaBright\" \"npm --prefix services/api-gateway run start:dev\" \"npm --prefix services/auth-service run start:dev\" \"npm --prefix services/project-service run start:dev\" \"npm --prefix services/team-service run start:dev\" \"npm --prefix services/task-service run start:dev\" \"npm --prefix services/sprint-service run start:dev\" \"npm --prefix services/risk-service run start:dev\" \"npm --prefix services/reporting-service run start:dev\" \"npm --prefix services/ai-service run start:dev\" \"npm --prefix frontend run dev\"",
+    "start:windows": "powershell -ExecutionPolicy Bypass -File ./start-all.ps1",
+    "stop:all": "powershell -ExecutionPolicy Bypass -File ./stop-all.ps1",
+    "test:nft": "node scripts/nft-runner.mjs",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f"
+  },
+  "devDependencies": {
+    "supabase": "^2.119.0"
+  }
+}

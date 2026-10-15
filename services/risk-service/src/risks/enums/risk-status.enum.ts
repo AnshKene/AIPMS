@@ -1,0 +1,7 @@
+export enum RiskStatus {
+  OPEN = 'OPEN',
+  MITIGATING = 'MITIGATING',
+  RESOLVED = 'RESOLVED',
+  ACCEPTED = 'ACCEPTED',
+  CLOSED = 'CLOSED',
+}
