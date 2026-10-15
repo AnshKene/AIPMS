@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
-const internalApiUrl = process.env.INTERNAL_API_URL || 'http://localhost:3000';
+const rawInternalUrl = process.env.INTERNAL_API_URL || 'http://localhost:4000';
+const internalApiUrl = rawInternalUrl.replace(/\/+$/, '').replace(/\/api$/, '');
 
 const nextConfig: NextConfig = {
   /* config options here */
@@ -14,7 +15,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: `${internalApiUrl.replace(/\/+$/, '')}/api/:path*`,
+        destination: `${internalApiUrl}/api/:path*`,
       },
     ];
   },

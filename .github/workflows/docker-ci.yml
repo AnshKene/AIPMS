@@ -1,0 +1,50 @@
+name: Docker & Compose CI
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - 'docker-compose.yml'
+      - '.env.example'
+      - '.dockerignore'
+      - '**/Dockerfile'
+      - 'frontend/.dockerignore'
+      - 'services/**/.dockerignore'
+      - '.github/workflows/docker-ci.yml'
+
+  push:
+    branches:
+      - develop
+    paths:
+      - 'docker-compose.yml'
+      - '.env.example'
+      - '.dockerignore'
+      - '**/Dockerfile'
+      - 'frontend/.dockerignore'
+      - 'services/**/.dockerignore'
+      - '.github/workflows/docker-ci.yml'
+
+jobs:
+  validate-compose:
+    name: Validate Docker Compose Configuration
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare environment file
+        run: |
+          cp .env.example .env
+
+      - name: Validate Docker Compose syntax and dependencies
+        run: |
+          docker compose config --quiet
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker images
+        run: |
+          docker compose build --parallel
