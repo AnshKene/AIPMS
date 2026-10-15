@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+*/node_modules/
+*/*/node_modules/
+
+# Production builds
+dist/
+*/dist/
+build/
+.next/
+*/.next/
+
+# Environment and secrets
+.env
+.env.local
+*.env
+*.env.*
+
+# Git and CI
+.git/
+.github/
+
+# OS and Editor metadata
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Testing and coverage
+coverage/
+*.log
+*.tsbuildinfo

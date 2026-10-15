@@ -1,0 +1,13 @@
+node_modules
+.next
+build
+dist
+.git
+.vscode
+.idea
+*.log
+.env
+.env.local
+*.env
+coverage
+*.tsbuildinfo
