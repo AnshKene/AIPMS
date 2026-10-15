@@ -49,4 +49,4 @@ jobs:
 
       - name: Build Docker images
         run: |
-          docker compose build --parallel
+          docker compose build
