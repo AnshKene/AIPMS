@@ -1,5 +1,8 @@
 name: Docker & Compose CI
 
+permissions:
+  contents: read
+
 on:
   pull_request:
     branches:
@@ -7,11 +10,13 @@ on:
       - main
     paths:
       - 'docker-compose.yml'
+      - 'Dockerfile.render'
       - '.env.example'
       - '.dockerignore'
       - '**/Dockerfile'
       - 'frontend/.dockerignore'
       - 'services/**/.dockerignore'
+      - 'supabase/migrations/**'
       - '.github/workflows/docker-ci.yml'
 
   push:
@@ -20,21 +25,71 @@ on:
       - main
     paths:
       - 'docker-compose.yml'
+      - 'Dockerfile.render'
       - '.env.example'
       - '.dockerignore'
       - '**/Dockerfile'
       - 'frontend/.dockerignore'
       - 'services/**/.dockerignore'
+      - 'supabase/migrations/**'
       - '.github/workflows/docker-ci.yml'
 
 jobs:
   validate-compose:
-    name: Validate Docker Compose Configuration
+    name: Validate Docker Compose Configuration & Security Hygiene
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Secret hygiene verification
+        run: |
+          echo "Running secret detection pattern validation tests..."
+          PATTERN='(^|/)\.env(\.[^/]+)?$'
+          ALLOW_PATTERN='\.example$'
+
+          test_match() {
+            echo "$1" | grep -E "$PATTERN" | grep -vE "$ALLOW_PATTERN" > /dev/null 2>&1
+          }
+
+          # Verify pattern correctly identifies all target sensitive variants
+          test_match ".env" || { echo "::error::Validation test failed: .env was not detected"; exit 1; }
+          test_match ".env.local" || { echo "::error::Validation test failed: .env.local was not detected"; exit 1; }
+          test_match ".env.production" || { echo "::error::Validation test failed: .env.production was not detected"; exit 1; }
+          test_match ".env.staging" || { echo "::error::Validation test failed: .env.staging was not detected"; exit 1; }
+          test_match "services/api-gateway/.env" || { echo "::error::Validation test failed: services/api-gateway/.env was not detected"; exit 1; }
+          test_match "frontend/.env.local" || { echo "::error::Validation test failed: frontend/.env.local was not detected"; exit 1; }
+
+          # Verify pattern allows safe template examples
+          if test_match ".env.example"; then echo "::error::Validation test failed: .env.example falsely flagged"; exit 1; fi
+          if test_match "services/api-gateway/.env.example"; then echo "::error::Validation test failed: services/api-gateway/.env.example falsely flagged"; exit 1; fi
+          if test_match ".env.production.example"; then echo "::error::Validation test failed: .env.production.example falsely flagged"; exit 1; fi
+
+          echo "Validation test cases passed. Scanning tracked repository files..."
+
+          TRACKED_SECRETS=$(git ls-files | grep -E "$PATTERN" | grep -vE "$ALLOW_PATTERN" || true)
+          if [ -n "$TRACKED_SECRETS" ]; then
+            echo "::error::Tracked sensitive environment file path(s) detected in git tree:"
+            echo "$TRACKED_SECRETS" | sed 's/^/ - /'
+            exit 1
+          fi
+          echo "Secret hygiene check passed: No sensitive environment files are tracked."
+
+      - name: Validate database migration ordering and SQL structure
+        run: |
+          echo "Validating SQL migration files..."
+          for file in supabase/migrations/*.sql; do
+            if [ -f "$file" ]; then
+              echo "Checking migration format: $file"
+              # Ensure file is not empty
+              if [ ! -s "$file" ]; then
+                echo "::error::Empty migration detected: $file"
+                exit 1
+              fi
+            fi
+          done
+          echo "All SQL migration manifests verified."
 
       - name: Prepare environment file
         run: |

@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { describe, beforeEach, it, expect, vi } from 'vitest';
 import { ProjectsService } from './projects.service.js';
 import { ProjectStatus } from './enums/project-status.enum.js';
@@ -84,6 +84,105 @@ describe('ProjectsService', () => {
           ownerId: ownerUuid,
         }),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should automatically derive ownerId from verified auth session when omitted', async () => {
+      const mockProject = {
+        id: validUuid,
+        name: 'Auto-Owner Project',
+        description: 'Derived ownership',
+        status: ProjectStatus.PLANNING,
+        owner_id: ownerUuid,
+        created_at: '2026-09-25T20:00:00.000Z',
+        updated_at: '2026-09-25T20:00:00.000Z',
+      };
+
+      const mockSingle = vi.fn().mockResolvedValue({ data: mockProject, error: null });
+      const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+      const mockInsert = vi.fn().mockReturnValue({ select: mockSelect });
+
+      const mockGetUser = vi.fn().mockResolvedValue({
+        data: { user: { id: ownerUuid, app_metadata: { role: 'TEAM_MEMBER' } } },
+        error: null,
+      });
+
+      (service as any).getSupabaseClient = vi.fn().mockReturnValue({
+        auth: { getUser: mockGetUser },
+        from: vi.fn().mockReturnValue({ insert: mockInsert }),
+      });
+
+      const result = await service.create(
+        {
+          name: 'Auto-Owner Project',
+          description: 'Derived ownership',
+        },
+        'Bearer mock-user-token',
+      );
+
+      expect(result.ownerId).toBe(ownerUuid);
+      expect(mockInsert).toHaveBeenCalledWith([
+        expect.objectContaining({ owner_id: ownerUuid }),
+      ]);
+    });
+
+    it('should reject attempted ownership spoofing when client supplies conflicting ownerId', async () => {
+      const mockGetUser = vi.fn().mockResolvedValue({
+        data: { user: { id: ownerUuid, app_metadata: { role: 'TEAM_MEMBER' } } },
+        error: null,
+      });
+
+      (service as any).getSupabaseClient = vi.fn().mockReturnValue({
+        auth: { getUser: mockGetUser },
+      });
+
+      await expect(
+        service.create(
+          {
+            name: 'Spoofed Project',
+            ownerId: '99999999-9999-4999-a999-999999999999',
+          },
+          'Bearer mock-user-token',
+        ),
+      ).rejects.toThrow('Cannot create project on behalf of another user');
+    });
+
+    it('should reject invalid or expired Bearer token with UnauthorizedException and not fall back to dto.ownerId', async () => {
+      const mockGetUser = vi.fn().mockResolvedValue({
+        data: { user: null },
+        error: { message: 'JWT expired' },
+      });
+
+      (service as any).getSupabaseClient = vi.fn().mockReturnValue({
+        auth: { getUser: mockGetUser },
+      });
+
+      await expect(
+        service.create(
+          {
+            name: 'Attacker Project',
+            ownerId: '99999999-9999-4999-a999-999999999999',
+          },
+          'Bearer expired-fake-token',
+        ),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should reject when auth getUser throws an error with UnauthorizedException', async () => {
+      const mockGetUser = vi.fn().mockRejectedValue(new Error('Network or signature error'));
+
+      (service as any).getSupabaseClient = vi.fn().mockReturnValue({
+        auth: { getUser: mockGetUser },
+      });
+
+      await expect(
+        service.create(
+          {
+            name: 'Attacker Project',
+            ownerId: '99999999-9999-4999-a999-999999999999',
+          },
+          'Bearer corrupted-token',
+        ),
+      ).rejects.toThrow(UnauthorizedException);
     });
   });
 

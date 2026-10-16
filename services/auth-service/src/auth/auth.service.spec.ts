@@ -139,6 +139,30 @@ describe('AuthService', () => {
 
       expect(result.user.role).toBe(Role.TEAM_MEMBER);
     });
+
+    it('should never assign ADMIN role based on specific email (such as ak@gmail.com) during registration', async () => {
+      const mockSignUp = vi.fn().mockResolvedValue({
+        data: {
+          user: {
+            id: 'user-ak-100',
+            email: 'ak@gmail.com',
+            user_metadata: { name: 'AK User' },
+          },
+        },
+        error: null,
+      });
+      (service as any).supabase = {
+        auth: { signUp: mockSignUp },
+      };
+
+      const result = await service.register({
+        email: 'ak@gmail.com',
+        password: 'password123',
+        name: 'AK User',
+      });
+
+      expect(result.user.role).toBe(Role.TEAM_MEMBER);
+    });
   });
 
   describe('login', () => {
@@ -187,6 +211,91 @@ describe('AuthService', () => {
           password: 'wrongpassword',
         }),
       ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should never grant in-memory ADMIN role to a different Supabase user ID with admin@aipms.com', async () => {
+      const mockSignIn = vi.fn().mockResolvedValue({
+        data: {
+          session: {
+            access_token: 'mock-token',
+            refresh_token: 'mock-refresh',
+            expires_at: 1700000000,
+          },
+          user: {
+            id: 'unauthorized-user-999',
+            email: 'admin@aipms.com',
+            user_metadata: { name: 'Imposter' },
+            app_metadata: {},
+          },
+        },
+        error: null,
+      });
+      (service as any).supabase = {
+        auth: { signInWithPassword: mockSignIn },
+      };
+
+      const result = await service.login({
+        email: 'admin@aipms.com',
+        password: 'password123',
+      });
+
+      expect(result.user.role).toBe(Role.TEAM_MEMBER);
+      expect(result.user.id).toBe('unauthorized-user-999');
+    });
+
+    it('should strictly default to TEAM_MEMBER in production when app_metadata is missing', async () => {
+      const prevEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+      try {
+        const mockSignIn = vi.fn().mockResolvedValue({
+          data: {
+            session: {
+              access_token: 'prod-token',
+              refresh_token: 'prod-refresh',
+              expires_at: 1700000000,
+            },
+            user: {
+              id: 'admin-user-001',
+              email: 'admin@aipms.com',
+              user_metadata: { name: 'Admin' },
+              app_metadata: {},
+            },
+          },
+          error: null,
+        });
+        (service as any).supabase = {
+          auth: { signInWithPassword: mockSignIn },
+        };
+
+        const result = await service.login({
+          email: 'admin@aipms.com',
+          password: 'password123',
+        });
+
+        expect(result.user.role).toBe(Role.TEAM_MEMBER);
+      } finally {
+        process.env.NODE_ENV = prevEnv;
+      }
+    });
+
+    it('should not seed demo administrator users in production', async () => {
+      const prevEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+      try {
+        const module: TestingModule = await Test.createTestingModule({
+          providers: [
+            AuthService,
+            { provide: ConfigService, useValue: mockConfigService },
+            { provide: AuditService, useValue: mockAuditService },
+          ],
+        }).compile();
+
+        const prodService = module.get<AuthService>(AuthService);
+        const users = await prodService.listUsers();
+        expect(users).toHaveLength(0);
+      } finally {
+        process.env.NODE_ENV = prevEnv;
+      }
     });
   });
 
@@ -349,6 +458,26 @@ describe('AuthService', () => {
         'admin-user-001',
       );
       expect(result.role).toBe(Role.PROJECT_MANAGER);
+    });
+
+    it('should record the real administrator email in the audit log when updating user role', async () => {
+      await service.updateUserRole(
+        'member-user-003',
+        Role.PROJECT_MANAGER,
+        Role.ADMIN,
+        'custom-admin-id',
+        'realadmin@company.com',
+      );
+
+      expect(mockAuditService.recordEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actorId: 'custom-admin-id',
+          actorEmail: 'realadmin@company.com',
+          action: 'ROLE_ASSIGNED',
+          targetResource: 'member-user-003',
+          outcome: 'SUCCESS',
+        }),
+      );
     });
   });
 
