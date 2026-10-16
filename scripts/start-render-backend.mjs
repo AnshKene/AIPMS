@@ -6,6 +6,8 @@
  */
 
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
 import process from 'node:process';
 
 const services = [
@@ -62,7 +64,11 @@ async function startService(svc) {
 
   log('supervisor', `Starting ${svc.name} on port ${svc.port} (--max-old-space-size=${svc.maxOldSpace})...`);
 
-  const cp = spawn('node', [`--max-old-space-size=${svc.maxOldSpace}`, 'dist/main.js'], {
+  const scriptPath = fs.existsSync(path.join(svc.dir, 'dist', 'src', 'main.js'))
+    ? 'dist/src/main.js'
+    : 'dist/main.js';
+
+  const cp = spawn('node', [`--max-old-space-size=${svc.maxOldSpace}`, scriptPath], {
     cwd: svc.dir,
     env,
     stdio: 'inherit',
