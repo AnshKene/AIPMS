@@ -3,6 +3,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
@@ -70,16 +71,53 @@ export class ProjectsService {
   async create(dto: CreateProjectDto, authHeader?: string) {
     this.validateDates(dto.startDate, dto.endDate);
 
+    const client = this.getSupabaseClient(authHeader);
+    let resolvedOwnerId = dto.ownerId;
+
+    if (authHeader) {
+      let userData: any;
+      let userError: any;
+      try {
+        const res = await client.auth.getUser();
+        userData = res.data;
+        userError = res.error;
+      } catch (err) {
+        this.logger.warn(`Could not verify user from token: ${(err as Error).message}`);
+        throw new UnauthorizedException('Invalid or expired authentication token');
+      }
+
+      if (userError || !userData?.user?.id) {
+        this.logger.warn(`Invalid or expired token supplied: ${userError?.message}`);
+        throw new UnauthorizedException('Invalid or expired authentication token');
+      }
+
+      const authUserId = userData.user.id;
+      const isAdmin =
+        userData.user.app_metadata?.role === 'ADMIN' ||
+        (userData.user as any).role === 'ADMIN';
+
+      if (dto.ownerId && dto.ownerId !== authUserId && !isAdmin) {
+        throw new BadRequestException(
+          'Cannot create project on behalf of another user. Ownership is derived from the authenticated account.',
+        );
+      }
+      resolvedOwnerId = isAdmin && dto.ownerId ? dto.ownerId : authUserId;
+    }
+
+    if (!resolvedOwnerId) {
+      throw new BadRequestException(
+        'Project owner could not be identified from authentication session.',
+      );
+    }
+
     const newProject = {
       name: dto.name,
       description: dto.description ?? null,
       status: dto.status ?? ProjectStatus.PLANNING,
       start_date: dto.startDate ?? null,
       end_date: dto.endDate ?? null,
-      owner_id: dto.ownerId,
+      owner_id: resolvedOwnerId,
     };
-
-    const client = this.getSupabaseClient(authHeader);
 
     const { data, error } = await client
       .from('projects')

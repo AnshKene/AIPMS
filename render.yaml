@@ -1,194 +1,41 @@
 # AIPMS Render Blueprint Specification
-# Infrastructure as Code (IaC) for Staging Deployment on Render
-# API Gateway is public; domain microservices are private services (pserv)
+# Free-Tier Infrastructure as Code (IaC) for ₹0 Production & Staging Deployment on Render
+# Runs a single unified Web Service hosting the API Gateway and internal domain microservices.
+# Consumes exactly 1 Free Web Service (720 hrs/mo <= 750 free hrs limit) with zero hosting costs.
 
 services:
-  # ─── Public Entry Point: API Gateway ───────────────────────────────────────
   - type: web
-    name: aipms-api-gateway
+    name: aipms-backend
     runtime: docker
-    dockerfilePath: ./services/api-gateway/Dockerfile
-    dockerContext: ./services/api-gateway
+    dockerfilePath: ./Dockerfile.render
+    dockerContext: .
     region: oregon
-    plan: starter
+    plan: free
     healthCheckPath: /api/health
     envVars:
       - key: PORT
         value: 3000
       - key: NODE_ENV
-        value: staging
+        value: production
       - key: CORS_ORIGIN
         sync: false
-        # e.g. https://aipms.vercel.app,https://aipms-staging.vercel.app
+        # e.g. https://aipms.vercel.app,http://localhost:3008
       - key: AUTH_SERVICE_URL
-        value: http://aipms-auth-service:3001
+        value: http://127.0.0.1:3001
       - key: PROJECT_SERVICE_URL
-        value: http://aipms-project-service:3002
+        value: http://127.0.0.1:3002
       - key: TEAM_SERVICE_URL
-        value: http://aipms-team-service:3003
+        value: http://127.0.0.1:3003
       - key: TASK_SERVICE_URL
-        value: http://aipms-task-service:3004
+        value: http://127.0.0.1:3004
       - key: SPRINT_SERVICE_URL
-        value: http://aipms-sprint-service:3005
+        value: http://127.0.0.1:3005
       - key: RISK_SERVICE_URL
-        value: http://aipms-risk-service:3006
+        value: http://127.0.0.1:3006
       - key: REPORTING_SERVICE_URL
-        value: http://aipms-reporting-service:3007
+        value: http://127.0.0.1:3007
       - key: AI_SERVICE_URL
-        value: http://aipms-ai-service:3009
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      - key: SUPABASE_ANON_KEY
-        sync: false
-
-  # ─── Private Microservices (Internal Network Only) ─────────────────────────
-  - type: pserv
-    name: aipms-auth-service
-    runtime: docker
-    dockerfilePath: ./services/auth-service/Dockerfile
-    dockerContext: ./services/auth-service
-    region: oregon
-    plan: starter
-    envVars:
-      - key: PORT
-        value: 3001
-      - key: NODE_ENV
-        value: staging
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      - key: SUPABASE_ANON_KEY
-        sync: false
-
-  - type: pserv
-    name: aipms-project-service
-    runtime: docker
-    dockerfilePath: ./services/project-service/Dockerfile
-    dockerContext: ./services/project-service
-    region: oregon
-    plan: starter
-    envVars:
-      - key: PORT
-        value: 3002
-      - key: NODE_ENV
-        value: staging
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      - key: SUPABASE_ANON_KEY
-        sync: false
-
-  - type: pserv
-    name: aipms-team-service
-    runtime: docker
-    dockerfilePath: ./services/team-service/Dockerfile
-    dockerContext: ./services/team-service
-    region: oregon
-    plan: starter
-    envVars:
-      - key: PORT
-        value: 3003
-      - key: NODE_ENV
-        value: staging
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      - key: SUPABASE_ANON_KEY
-        sync: false
-
-  - type: pserv
-    name: aipms-task-service
-    runtime: docker
-    dockerfilePath: ./services/task-service/Dockerfile
-    dockerContext: ./services/task-service
-    region: oregon
-    plan: starter
-    envVars:
-      - key: PORT
-        value: 3004
-      - key: NODE_ENV
-        value: staging
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      - key: SUPABASE_ANON_KEY
-        sync: false
-
-  - type: pserv
-    name: aipms-sprint-service
-    runtime: docker
-    dockerfilePath: ./services/sprint-service/Dockerfile
-    dockerContext: ./services/sprint-service
-    region: oregon
-    plan: starter
-    envVars:
-      - key: PORT
-        value: 3005
-      - key: NODE_ENV
-        value: staging
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      - key: SUPABASE_ANON_KEY
-        sync: false
-
-  - type: pserv
-    name: aipms-risk-service
-    runtime: docker
-    dockerfilePath: ./services/risk-service/Dockerfile
-    dockerContext: ./services/risk-service
-    region: oregon
-    plan: starter
-    envVars:
-      - key: PORT
-        value: 3006
-      - key: NODE_ENV
-        value: staging
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      - key: SUPABASE_ANON_KEY
-        sync: false
-
-  - type: pserv
-    name: aipms-reporting-service
-    runtime: docker
-    dockerfilePath: ./services/reporting-service/Dockerfile
-    dockerContext: ./services/reporting-service
-    region: oregon
-    plan: starter
-    envVars:
-      - key: PORT
-        value: 3007
-      - key: NODE_ENV
-        value: staging
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      - key: SUPABASE_ANON_KEY
-        sync: false
-
-  - type: pserv
-    name: aipms-ai-service
-    runtime: docker
-    dockerfilePath: ./services/ai-service/Dockerfile
-    dockerContext: ./services/ai-service
-    region: oregon
-    plan: starter
-    envVars:
-      - key: PORT
-        value: 3009
-      - key: NODE_ENV
-        value: staging
+        value: http://127.0.0.1:3009
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
@@ -197,6 +44,6 @@ services:
         sync: false
       - key: OLLAMA_BASE_URL
         sync: false
-        # Point to external GPU host or leave empty to use deterministic fallback engine
+        # Leave empty on Render Free to run deterministic heuristic analysis without GPU host
       - key: OLLAMA_TIMEOUT_MS
         value: 30000
