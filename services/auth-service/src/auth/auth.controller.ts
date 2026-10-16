@@ -128,23 +128,26 @@ export class AuthController {
     @Body() dto: UpdateRoleDto,
     @Headers('authorization') authHeader?: string,
   ) {
-    let requesterRole: Role | undefined;
-    let requesterId: string | undefined;
-
-    if (authHeader) {
-      const token = this.extractToken(authHeader);
-      const caller = await this.authService.getCurrentUser(token);
-      requesterRole = caller.role;
-      requesterId = caller.id;
-
-      if (caller.role !== Role.ADMIN) {
-        throw new ForbiddenException(
-          `Access Denied: Role '${caller.role}' is not authorized to update user roles. Only administrators can perform this action.`,
-        );
-      }
+    if (!authHeader) {
+      throw new UnauthorizedException('Authentication token required');
     }
 
-    return this.authService.updateUserRole(id, dto.role, requesterRole, requesterId);
+    const token = this.extractToken(authHeader);
+    const caller = await this.authService.getCurrentUser(token);
+
+    if (caller.role !== Role.ADMIN) {
+      throw new ForbiddenException(
+        `Access Denied: Role '${caller.role}' is not authorized to update user roles. Only administrators can perform this action.`,
+      );
+    }
+
+    return this.authService.updateUserRole(
+      id,
+      dto.role,
+      caller.role,
+      caller.id,
+      caller.email,
+    );
   }
 
   @Get('audit-logs')

@@ -58,11 +58,11 @@ export class CreateProjectDto {
   @IsDateString({}, { message: 'End date must be a valid ISO date string' })
   endDate?: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     example: 'd0a1b2c3-4567-89ab-cdef-0123456789ab',
-    description: 'Owner user ID (UUID from Supabase Auth)',
+    description: 'Owner user ID (UUID from Supabase Auth). Derived automatically from session if omitted.',
   })
+  @IsOptional()
   @IsUUID('4', { message: 'ownerId must be a valid UUID' })
-  @IsNotEmpty({ message: 'ownerId is required' })
-  ownerId!: string;
+  ownerId?: string;
 }

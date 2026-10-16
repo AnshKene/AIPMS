@@ -67,8 +67,10 @@ export class AuthService {
       }
     }
 
-    // Seed initial system users for RBAC testing
-    this.seedInitialUsers();
+    // Seed initial system users for local RBAC testing only (never in production)
+    if (process.env.NODE_ENV !== 'production') {
+      this.seedInitialUsers();
+    }
   }
 
   private seedInitialUsers() {
@@ -109,17 +111,14 @@ export class AuthService {
   async register(registerDto: RegisterDto) {
     const { email, password, name } = registerDto;
 
-    // Default admin detection or requested role or TEAM_MEMBER
-    const assignedRole =
-      email.toLowerCase() === 'admin@aipms.com' || email.toLowerCase() === 'ak@gmail.com'
-        ? Role.ADMIN
-        : Role.TEAM_MEMBER;
+    // Ordinary registration strictly defaults to TEAM_MEMBER to prevent privilege escalation
+    const assignedRole = Role.TEAM_MEMBER;
 
     const { data, error } = await this.supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { name, role: assignedRole },
+        data: { name },
       },
     });
 
@@ -141,6 +140,16 @@ export class AuthService {
 
     if (!data.user) {
       throw new BadRequestException('User registration failed');
+    }
+
+    if (this.adminSupabase) {
+      try {
+        await this.adminSupabase.auth.admin.updateUserById(data.user.id, {
+          app_metadata: { role: assignedRole },
+        });
+      } catch (err) {
+        this.logger.warn(`Could not persist default role to app_metadata on signup: ${(err as Error).message}`);
+      }
     }
 
     const userRecord: UserRecord = {
@@ -172,22 +181,25 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // Determine assigned role with precedence: existing stored record > trusted app_metadata > admin check > default
-    const existing = Array.from(this.usersMap.values()).find(
-      (u) => u.email.toLowerCase() === email.toLowerCase(),
-    );
+    // Determine assigned role with precedence:
+    // 1. Trusted app_metadata (production & dev)
+    // 2. In non-production only: in-memory cache strictly matched by user ID (never cross-grant by email)
+    // 3. Default to TEAM_MEMBER
+    let assignedRole: Role = Role.TEAM_MEMBER;
+    if (data.user.app_metadata?.role) {
+      assignedRole = data.user.app_metadata.role as Role;
+    } else if (process.env.NODE_ENV !== 'production') {
+      const existing = this.usersMap.get(data.user.id);
+      if (existing && existing.id === data.user.id) {
+        assignedRole = existing.role;
+      }
+    }
 
-    const assignedRole: Role =
-      existing?.role ||
-      (data.user.app_metadata?.role as Role) ||
-      (email.toLowerCase() === 'admin@aipms.com' || email.toLowerCase() === 'ak@gmail.com'
-        ? Role.ADMIN
-        : Role.TEAM_MEMBER);
-
+    const cachedUser = this.usersMap.get(data.user.id);
     const userRecord: UserRecord = {
       id: data.user.id,
       email: data.user.email ?? email,
-      name: data.user.user_metadata?.name ?? existing?.name ?? null,
+      name: data.user.user_metadata?.name ?? (cachedUser?.id === data.user.id ? cachedUser.name : null),
       role: assignedRole,
       createdAt: data.user.created_at ?? new Date().toISOString(),
     };
@@ -215,21 +227,22 @@ export class AuthService {
     }
 
     const email = data.user.email ?? '';
-    const existing = Array.from(this.usersMap.values()).find(
-      (u) => u.email.toLowerCase() === email.toLowerCase(),
-    );
 
-    const assignedRole: Role =
-      existing?.role ||
-      (data.user.app_metadata?.role as Role) ||
-      (email.toLowerCase() === 'admin@aipms.com' || email.toLowerCase() === 'ak@gmail.com'
-        ? Role.ADMIN
-        : Role.TEAM_MEMBER);
+    let assignedRole: Role = Role.TEAM_MEMBER;
+    if (data.user.app_metadata?.role) {
+      assignedRole = data.user.app_metadata.role as Role;
+    } else if (process.env.NODE_ENV !== 'production') {
+      const existing = this.usersMap.get(data.user.id);
+      if (existing && existing.id === data.user.id) {
+        assignedRole = existing.role;
+      }
+    }
 
+    const cachedUser = this.usersMap.get(data.user.id);
     const userRecord: UserRecord = {
       id: data.user.id,
       email: data.user.email ?? email,
-      name: data.user.user_metadata?.name ?? existing?.name ?? null,
+      name: data.user.user_metadata?.name ?? (cachedUser?.id === data.user.id ? cachedUser.name : null),
       role: assignedRole,
       createdAt: data.user.created_at ?? new Date().toISOString(),
     };
@@ -245,11 +258,7 @@ export class AuthService {
         const { data, error } = await this.adminSupabase.auth.admin.listUsers();
         if (!error && data?.users) {
           for (const u of data.users) {
-            const role =
-              (u.app_metadata?.role as Role) ||
-              (u.email?.toLowerCase() === 'admin@aipms.com' || u.email?.toLowerCase() === 'ak@gmail.com'
-                ? Role.ADMIN
-                : Role.TEAM_MEMBER);
+            const role = (u.app_metadata?.role as Role) || Role.TEAM_MEMBER;
             const record: UserRecord = {
               id: u.id,
               email: u.email ?? '',
@@ -270,10 +279,11 @@ export class AuthService {
   async updateUserRole(
     userId: string,
     newRole: Role,
-    requesterRole?: Role,
+    requesterRole: Role = Role.ADMIN,
     requesterId?: string,
+    requesterEmail?: string,
   ) {
-    if (requesterRole !== undefined && requesterRole !== Role.ADMIN) {
+    if (requesterRole !== Role.ADMIN) {
       throw new ForbiddenException(
         `Access Denied: Role '${requesterRole}' is not authorized to update user roles. Only administrators can perform this action.`,
       );
@@ -285,12 +295,12 @@ export class AuthService {
         `Invalid role value '${newRole}'. Role must be one of ADMIN, PROJECT_MANAGER, TEAM_MEMBER, VIEWER`,
       );
     }
-    let existing = this.usersMap.get(userId);
+    let existing: UserRecord | undefined;
 
-    if (!existing) {
-      existing = Array.from(this.usersMap.values()).find(
-        (u) => u.id === userId || u.email.toLowerCase() === userId.toLowerCase(),
-      );
+    // Check by user ID first in local map
+    const cached = this.usersMap.get(userId);
+    if (cached && cached.id === userId) {
+      existing = cached;
     }
 
     // If user is not found in local cache (e.g. after service restart or in another replica), check Supabase
@@ -313,6 +323,16 @@ export class AuthService {
       }
     }
 
+    // In non-production only, allow lookup of seeded demo user by exact ID or email
+    if (!existing && process.env.NODE_ENV !== 'production') {
+      const found = Array.from(this.usersMap.values()).find(
+        (u) => u.id === userId || u.email.toLowerCase() === userId.toLowerCase(),
+      );
+      if (found) {
+        existing = found;
+      }
+    }
+
     if (!existing) {
       throw new BadRequestException(`User with ID '${userId}' not found`);
     }
@@ -325,10 +345,7 @@ export class AuthService {
           const { data } = await this.adminSupabase.auth.admin.listUsers();
           if (data?.users) {
             activeAdminsCount = data.users.filter(
-              (u) =>
-                u.app_metadata?.role === Role.ADMIN ||
-                u.email?.toLowerCase() === 'admin@aipms.com' ||
-                u.email?.toLowerCase() === 'ak@gmail.com',
+              (u) => u.app_metadata?.role === Role.ADMIN,
             ).length;
           }
         } catch {
@@ -370,13 +387,10 @@ export class AuthService {
 
     existing.role = newRole;
     this.usersMap.set(existing.id, existing);
-    if (existing.email) {
-      this.usersMap.set(existing.email.toLowerCase(), existing);
-    }
 
     await this.auditService.recordEvent({
       actorId: requesterId ?? 'admin-user-001',
-      actorEmail: 'admin@aipms.com',
+      actorEmail: requesterEmail ?? 'admin@aipms.com',
       action: 'ROLE_ASSIGNED',
       targetResource: existing.id,
       previousValue: previousRole,

@@ -1,0 +1,94 @@
+# ─── AIPMS Consolidated Backend Container for Render Free Tier (₹0 Hosting) ───
+FROM node:22-alpine AS builder
+WORKDIR /app
+
+# Install build dependencies
+RUN apk add --no-cache python3 make g++
+
+# Copy package files for each service
+COPY services/api-gateway/package*.json services/api-gateway/
+COPY services/auth-service/package*.json services/auth-service/
+COPY services/project-service/package*.json services/project-service/
+COPY services/team-service/package*.json services/team-service/
+COPY services/task-service/package*.json services/task-service/
+COPY services/sprint-service/package*.json services/sprint-service/
+COPY services/risk-service/package*.json services/risk-service/
+COPY services/reporting-service/package*.json services/reporting-service/
+COPY services/ai-service/package*.json services/ai-service/
+
+# Install dependencies for each service
+RUN cd services/api-gateway && npm ci && \
+    cd ../auth-service && npm ci && \
+    cd ../project-service && npm ci && \
+    cd ../team-service && npm ci && \
+    cd ../task-service && npm ci && \
+    cd ../sprint-service && npm ci && \
+    cd ../risk-service && npm ci && \
+    cd ../reporting-service && npm ci && \
+    cd ../ai-service && npm ci
+
+# Copy sources
+COPY services/ services/
+
+# Build each service
+RUN cd services/api-gateway && npm run build && \
+    cd ../auth-service && npm run build && \
+    cd ../project-service && npm run build && \
+    cd ../team-service && npm run build && \
+    cd ../task-service && npm run build && \
+    cd ../sprint-service && npm run build && \
+    cd ../risk-service && npm run build && \
+    cd ../reporting-service && npm run build && \
+    cd ../ai-service && npm run build
+
+# ─── Production Runtime ───────────────────────────────────────────────────────
+FROM node:22-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PORT=3000
+
+# Copy built artifacts and production dependencies
+COPY --from=builder /app/services/api-gateway/dist /app/services/api-gateway/dist
+COPY --from=builder /app/services/api-gateway/node_modules /app/services/api-gateway/node_modules
+COPY --from=builder /app/services/api-gateway/package.json /app/services/api-gateway/package.json
+
+COPY --from=builder /app/services/auth-service/dist /app/services/auth-service/dist
+COPY --from=builder /app/services/auth-service/node_modules /app/services/auth-service/node_modules
+COPY --from=builder /app/services/auth-service/package.json /app/services/auth-service/package.json
+
+COPY --from=builder /app/services/project-service/dist /app/services/project-service/dist
+COPY --from=builder /app/services/project-service/node_modules /app/services/project-service/node_modules
+COPY --from=builder /app/services/project-service/package.json /app/services/project-service/package.json
+
+COPY --from=builder /app/services/team-service/dist /app/services/team-service/dist
+COPY --from=builder /app/services/team-service/node_modules /app/services/team-service/node_modules
+COPY --from=builder /app/services/team-service/package.json /app/services/team-service/package.json
+
+COPY --from=builder /app/services/task-service/dist /app/services/task-service/dist
+COPY --from=builder /app/services/task-service/node_modules /app/services/task-service/node_modules
+COPY --from=builder /app/services/task-service/package.json /app/services/task-service/package.json
+
+COPY --from=builder /app/services/sprint-service/dist /app/services/sprint-service/dist
+COPY --from=builder /app/services/sprint-service/node_modules /app/services/sprint-service/node_modules
+COPY --from=builder /app/services/sprint-service/package.json /app/services/sprint-service/package.json
+
+COPY --from=builder /app/services/risk-service/dist /app/services/risk-service/dist
+COPY --from=builder /app/services/risk-service/node_modules /app/services/risk-service/node_modules
+COPY --from=builder /app/services/risk-service/package.json /app/services/risk-service/package.json
+
+COPY --from=builder /app/services/reporting-service/dist /app/services/reporting-service/dist
+COPY --from=builder /app/services/reporting-service/node_modules /app/services/reporting-service/node_modules
+COPY --from=builder /app/services/reporting-service/package.json /app/services/reporting-service/package.json
+
+COPY --from=builder /app/services/ai-service/dist /app/services/ai-service/dist
+COPY --from=builder /app/services/ai-service/node_modules /app/services/ai-service/node_modules
+COPY --from=builder /app/services/ai-service/package.json /app/services/ai-service/package.json
+
+COPY scripts/start-render-backend.mjs /app/scripts/start-render-backend.mjs
+
+USER node
+
+EXPOSE 3000
+
+CMD ["node", "scripts/start-render-backend.mjs"]
