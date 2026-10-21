@@ -78,11 +78,12 @@ async function bootstrap() {
   SwaggerModule.setup('api/docs', app, document);
 
   const port = configService.get<number>('PORT', 3000);
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
 
   logger.log(`API Gateway is running on port ${port}`);
   logger.log(`Health endpoint: http://localhost:${port}/api/health`);
   logger.log(`Swagger docs: http://localhost:${port}/api/docs`);
 }
 
+// AIPMS API Gateway Entrypoint
 await bootstrap();
