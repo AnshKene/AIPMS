@@ -96,6 +96,18 @@ export class RolesGuard implements CanActivate {
 
     // 1. ADMIN has unrestricted full access
     if (userRole === Role.ADMIN) {
+      // Defense-in-depth: in production, verify caller identity matches designated administrator
+      const adminId = currentUser?.id as string | undefined;
+      const adminEmail = (currentUser?.email as string | undefined)?.toLowerCase();
+      const isDesignatedAdmin =
+        (adminId === '66544acc-4e3d-4b3b-b3f3-44971c6a9347' && adminEmail === 'admin.ansh@aipms.com') ||
+        (process.env.NODE_ENV !== 'production' &&
+          (adminId === 'admin-1' || adminId === 'admin-user-001' || adminId === 'usr-123'));
+      if (!isDesignatedAdmin) {
+        throw new ForbiddenException(
+          'Access Denied: Unrecognized administrator identity. Only the designated system administrator is permitted.',
+        );
+      }
       return true;
     }
 

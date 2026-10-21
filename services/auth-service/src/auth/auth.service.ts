@@ -25,8 +25,14 @@ export interface UserRecord {
   createdAt: string;
 }
 
+export const DESIGNATED_ADMIN_ID = '66544acc-4e3d-4b3b-b3f3-44971c6a9347';
+export const DESIGNATED_ADMIN_EMAIL = 'admin.ansh@aipms.com';
+
 @Injectable()
 export class AuthService {
+  public static readonly DESIGNATED_ADMIN_ID = DESIGNATED_ADMIN_ID;
+  public static readonly DESIGNATED_ADMIN_EMAIL = DESIGNATED_ADMIN_EMAIL;
+
   private readonly logger = new Logger(AuthService.name);
   private readonly supabaseUrl: string;
   private readonly supabaseAnonKey: string;
@@ -75,6 +81,13 @@ export class AuthService {
 
   private seedInitialUsers() {
     const seed: UserRecord[] = [
+      {
+        id: AuthService.DESIGNATED_ADMIN_ID,
+        email: AuthService.DESIGNATED_ADMIN_EMAIL,
+        name: 'Ansh',
+        role: Role.ADMIN,
+        createdAt: new Date().toISOString(),
+      },
       {
         id: 'admin-user-001',
         email: 'admin@aipms.com',
@@ -187,11 +200,35 @@ export class AuthService {
     // 3. Default to TEAM_MEMBER
     let assignedRole: Role = Role.TEAM_MEMBER;
     if (data.user.app_metadata?.role) {
-      assignedRole = data.user.app_metadata.role as Role;
+      const candidateRole = data.user.app_metadata.role as Role;
+      if (Object.values(Role).includes(candidateRole)) {
+        if (candidateRole === Role.ADMIN) {
+          const isDesignated =
+            data.user.id === AuthService.DESIGNATED_ADMIN_ID &&
+            (data.user.email ?? email).toLowerCase() === AuthService.DESIGNATED_ADMIN_EMAIL.toLowerCase();
+          if (isDesignated) {
+            assignedRole = Role.ADMIN;
+          } else {
+            this.logger.warn(
+              `User ${data.user.id} (${data.user.email}) claimed ADMIN in app_metadata but is not designated admin. Failing safe to TEAM_MEMBER.`,
+            );
+            assignedRole = Role.TEAM_MEMBER;
+          }
+        } else {
+          assignedRole = candidateRole;
+        }
+      }
     } else if (process.env.NODE_ENV !== 'production') {
       const existing = this.usersMap.get(data.user.id);
       if (existing && existing.id === data.user.id) {
-        assignedRole = existing.role;
+        if (existing.role === Role.ADMIN) {
+          const isDesignated =
+            existing.id === AuthService.DESIGNATED_ADMIN_ID ||
+            existing.id === 'admin-user-001';
+          assignedRole = isDesignated ? Role.ADMIN : Role.TEAM_MEMBER;
+        } else {
+          assignedRole = existing.role;
+        }
       }
     }
 
@@ -230,11 +267,35 @@ export class AuthService {
 
     let assignedRole: Role = Role.TEAM_MEMBER;
     if (data.user.app_metadata?.role) {
-      assignedRole = data.user.app_metadata.role as Role;
+      const candidateRole = data.user.app_metadata.role as Role;
+      if (Object.values(Role).includes(candidateRole)) {
+        if (candidateRole === Role.ADMIN) {
+          const isDesignated =
+            data.user.id === AuthService.DESIGNATED_ADMIN_ID &&
+            email.toLowerCase() === AuthService.DESIGNATED_ADMIN_EMAIL.toLowerCase();
+          if (isDesignated) {
+            assignedRole = Role.ADMIN;
+          } else {
+            this.logger.warn(
+              `User ${data.user.id} (${email}) claimed ADMIN in app_metadata but is not designated admin. Failing safe to TEAM_MEMBER.`,
+            );
+            assignedRole = Role.TEAM_MEMBER;
+          }
+        } else {
+          assignedRole = candidateRole;
+        }
+      }
     } else if (process.env.NODE_ENV !== 'production') {
       const existing = this.usersMap.get(data.user.id);
       if (existing && existing.id === data.user.id) {
-        assignedRole = existing.role;
+        if (existing.role === Role.ADMIN) {
+          const isDesignated =
+            existing.id === AuthService.DESIGNATED_ADMIN_ID ||
+            existing.id === 'admin-user-001';
+          assignedRole = isDesignated ? Role.ADMIN : Role.TEAM_MEMBER;
+        } else {
+          assignedRole = existing.role;
+        }
       }
     }
 
@@ -258,7 +319,30 @@ export class AuthService {
         const { data, error } = await this.adminSupabase.auth.admin.listUsers();
         if (!error && data?.users) {
           for (const u of data.users) {
-            const role = (u.app_metadata?.role as Role) || Role.TEAM_MEMBER;
+            const rawRole = (u.app_metadata?.role as Role) || Role.TEAM_MEMBER;
+            let role: Role = Role.TEAM_MEMBER;
+            if (Object.values(Role).includes(rawRole)) {
+              if (rawRole === Role.ADMIN) {
+                const isDesignated =
+                  u.id === AuthService.DESIGNATED_ADMIN_ID &&
+                  (u.email ?? '').toLowerCase() === AuthService.DESIGNATED_ADMIN_EMAIL.toLowerCase();
+                if (isDesignated) {
+                  role = Role.ADMIN;
+                } else if (
+                  process.env.NODE_ENV !== 'production' &&
+                  (u.id === 'admin-user-001' || u.id === 'admin-1')
+                ) {
+                  role = Role.ADMIN;
+                } else {
+                  this.logger.warn(
+                    `User ${u.id} (${u.email}) claimed ADMIN in app_metadata during listUsers but is not designated admin. Sanitizing to TEAM_MEMBER.`,
+                  );
+                  role = Role.TEAM_MEMBER;
+                }
+              } else {
+                role = rawRole;
+              }
+            }
             const record: UserRecord = {
               id: u.id,
               email: u.email ?? '',
@@ -273,7 +357,20 @@ export class AuthService {
         this.logger.warn(`Could not sync users from Supabase admin: ${(err as Error).message}`);
       }
     }
-    return Array.from(this.usersMap.values());
+    return Array.from(this.usersMap.values()).map((user) => {
+      if (user.role === Role.ADMIN) {
+        const isDesignated =
+          user.id === AuthService.DESIGNATED_ADMIN_ID &&
+          user.email.toLowerCase() === AuthService.DESIGNATED_ADMIN_EMAIL.toLowerCase();
+        if (
+          !isDesignated &&
+          !(process.env.NODE_ENV !== 'production' && (user.id === 'admin-user-001' || user.id === 'admin-1'))
+        ) {
+          return { ...user, role: Role.TEAM_MEMBER };
+        }
+      }
+      return user;
+    });
   }
 
   async updateUserRole(
@@ -308,7 +405,18 @@ export class AuthService {
       try {
         const { data, error } = await this.adminSupabase.auth.admin.getUserById(userId);
         if (!error && data?.user) {
-          const role = (data.user.app_metadata?.role as Role) || Role.TEAM_MEMBER;
+          const rawRole = (data.user.app_metadata?.role as Role) || Role.TEAM_MEMBER;
+          let role: Role = Role.TEAM_MEMBER;
+          if (Object.values(Role).includes(rawRole)) {
+            if (rawRole === Role.ADMIN) {
+              const isDesignated =
+                data.user.id === AuthService.DESIGNATED_ADMIN_ID &&
+                (data.user.email ?? '').toLowerCase() === AuthService.DESIGNATED_ADMIN_EMAIL.toLowerCase();
+              role = isDesignated ? Role.ADMIN : Role.TEAM_MEMBER;
+            } else {
+              role = rawRole;
+            }
+          }
           existing = {
             id: data.user.id,
             email: data.user.email ?? '',
@@ -337,31 +445,35 @@ export class AuthService {
       throw new BadRequestException(`User with ID '${userId}' not found`);
     }
 
+    // Enforce Single System Administrator Rule:
+    // 1. Only the designated administrator account (admin.ansh@aipms.com / 66544acc-4e3d-4b3b-b3f3-44971c6a9347)
+    //    can be assigned the ADMIN role. Reject attempts to assign ADMIN to any other account.
+    if (newRole === Role.ADMIN) {
+      const isDesignatedAdmin =
+        existing.id === AuthService.DESIGNATED_ADMIN_ID &&
+        existing.email.toLowerCase() === AuthService.DESIGNATED_ADMIN_EMAIL.toLowerCase();
+
+      if (!isDesignatedAdmin) {
+        throw new ForbiddenException(
+          `Access Denied: Role '${Role.ADMIN}' cannot be assigned. Only the designated system administrator (${AuthService.DESIGNATED_ADMIN_EMAIL}) is permitted to hold this role.`,
+        );
+      }
+    }
+
+    // 2. Prevent modifying or demoting the designated administrator account
+    const isTargetDesignatedAdmin =
+      existing.id === AuthService.DESIGNATED_ADMIN_ID ||
+      existing.email.toLowerCase() === AuthService.DESIGNATED_ADMIN_EMAIL.toLowerCase();
+
+    if (isTargetDesignatedAdmin && newRole !== Role.ADMIN) {
+      throw new ForbiddenException(
+        'Access Denied: The designated system administrator account cannot be modified or demoted.',
+      );
+    }
+
     // Protect against accidental demotion of the last active administrator
     if (existing.role === Role.ADMIN && newRole !== Role.ADMIN) {
-      let activeAdminsCount = 0;
-      if (this.adminSupabase) {
-        try {
-          const { data } = await this.adminSupabase.auth.admin.listUsers();
-          if (data?.users) {
-            activeAdminsCount = data.users.filter(
-              (u) => u.app_metadata?.role === Role.ADMIN,
-            ).length;
-          }
-        } catch {
-          // Fall back to local map count
-        }
-      }
-      if (activeAdminsCount === 0) {
-        const activeAdmins = Array.from(new Set(Array.from(this.usersMap.values()))).filter(
-          (u) => u.role === Role.ADMIN,
-        );
-        activeAdminsCount = activeAdmins.length;
-      }
-
-      if (activeAdminsCount <= 1) {
-        throw new BadRequestException('Cannot demote the last active administrator');
-      }
+      throw new ForbiddenException('Access Denied: Cannot demote the designated active administrator.');
     }
 
     const previousRole = existing.role;
@@ -383,14 +495,18 @@ export class AuthService {
           `Failed to persist role change securely: ${updateError.message}`,
         );
       }
+    } else if (process.env.NODE_ENV === 'production') {
+      throw new InternalServerErrorException(
+        'Administrative client is not configured; cannot persist role change securely in production',
+      );
     }
 
     existing.role = newRole;
     this.usersMap.set(existing.id, existing);
 
     await this.auditService.recordEvent({
-      actorId: requesterId ?? 'admin-user-001',
-      actorEmail: requesterEmail ?? 'admin@aipms.com',
+      actorId: requesterId ?? AuthService.DESIGNATED_ADMIN_ID,
+      actorEmail: requesterEmail ?? AuthService.DESIGNATED_ADMIN_EMAIL,
       action: 'ROLE_ASSIGNED',
       targetResource: existing.id,
       previousValue: previousRole,

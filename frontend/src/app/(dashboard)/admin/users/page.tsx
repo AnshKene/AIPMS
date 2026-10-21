@@ -4,7 +4,11 @@ import * as React from 'react';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { useAuth } from '@/lib/auth/auth-context';
 import { apiClient, ApiError } from '@/lib/api/client';
-import { type Role } from '@/lib/auth/auth-storage';
+import {
+  type Role,
+  isDesignatedAdmin,
+  DESIGNATED_ADMIN_EMAIL,
+} from '@/lib/auth/auth-storage';
 import {
   Users,
   ShieldCheck,
@@ -14,6 +18,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   ArrowRight,
+  Lock,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -42,7 +47,7 @@ interface SystemUser {
 const ROLE_INFO: Record<Role, { label: string; description: string }> = {
   ADMIN: {
     label: 'ADMIN',
-    description: 'Full platform administration, user role management, system health, and audit access.',
+    description: `Designated System Administrator (${DESIGNATED_ADMIN_EMAIL}): Global platform administration, user management, system health, and audit access.`,
   },
   PROJECT_MANAGER: {
     label: 'PROJECT MANAGER',
@@ -136,6 +141,14 @@ function UsersManagementContent() {
 
   const handleInitiateRoleChange = (user: SystemUser, newRole: Role) => {
     if (user.role === newRole) return;
+    if (isDesignatedAdmin(user)) {
+      setError('The designated System Administrator account cannot be modified or demoted.');
+      return;
+    }
+    if (newRole === 'ADMIN') {
+      setError('The ADMIN role is exclusively reserved for the designated System Administrator.');
+      return;
+    }
     setPendingRoleChange({ user, newRole });
   };
 
@@ -143,6 +156,19 @@ function UsersManagementContent() {
     if (!pendingRoleChange) return;
 
     const { user, newRole } = pendingRoleChange;
+
+    if (isDesignatedAdmin(user)) {
+      setError('Action Denied: The designated System Administrator account cannot be modified or demoted.');
+      setPendingRoleChange(null);
+      return;
+    }
+
+    if (newRole === 'ADMIN') {
+      setError('Action Denied: Role ADMIN cannot be assigned. Only the designated System Administrator is permitted.');
+      setPendingRoleChange(null);
+      return;
+    }
+
     setIsSubmitting(true);
     setUpdatingId(user.id);
     setError(null);
@@ -351,6 +377,7 @@ function UsersManagementContent() {
                     const isUpdating = updatingId === u.id;
                     const isCurrentUser =
                       currentUser && currentUser.email.toLowerCase() === u.email.toLowerCase();
+                    const isUserDesignatedAdmin = isDesignatedAdmin(u);
 
                     return (
                       <tr
@@ -363,12 +390,20 @@ function UsersManagementContent() {
                               {(u.name || u.email).slice(0, 2).toUpperCase()}
                             </div>
                             <div>
-                              <span>{u.name || 'Unnamed User'}</span>
-                              {isCurrentUser && (
-                                <span className="ml-2 inline-flex items-center rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 dark:bg-blue-950 dark:text-blue-300">
-                                  You
-                                </span>
-                              )}
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span>{u.name || 'Unnamed User'}</span>
+                                {isCurrentUser && (
+                                  <span className="inline-flex items-center rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                                    You
+                                  </span>
+                                )}
+                                {isUserDesignatedAdmin && (
+                                  <span className="inline-flex items-center gap-1 rounded bg-purple-50 px-1.5 py-0.5 text-[10px] font-bold text-purple-700 dark:bg-purple-950 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                                    <ShieldCheck className="h-3 w-3 text-purple-600 dark:text-purple-400" />
+                                    Designated Admin
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </td>
@@ -391,19 +426,25 @@ function UsersManagementContent() {
                         </td>
 
                         <td className="py-3 px-3">
-                          <select
-                            value={u.role}
-                            disabled={isUpdating}
-                            onChange={(e) =>
-                              handleInitiateRoleChange(u, e.target.value as Role)
-                            }
-                            className="h-8 rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer disabled:opacity-50"
-                          >
-                            <option value="ADMIN">ADMIN</option>
-                            <option value="PROJECT_MANAGER">PROJECT MANAGER</option>
-                            <option value="TEAM_MEMBER">TEAM MEMBER</option>
-                            <option value="VIEWER">VIEWER</option>
-                          </select>
+                          {isUserDesignatedAdmin ? (
+                            <div className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md border border-purple-200 dark:border-purple-900 bg-purple-50/70 dark:bg-purple-950/40 text-purple-800 dark:text-purple-300 text-xs font-semibold">
+                              <Lock className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
+                              <span>System Admin (Protected)</span>
+                            </div>
+                          ) : (
+                            <select
+                              value={u.role}
+                              disabled={isUpdating}
+                              onChange={(e) =>
+                                handleInitiateRoleChange(u, e.target.value as Role)
+                              }
+                              className="h-8 rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer disabled:opacity-50"
+                            >
+                              <option value="PROJECT_MANAGER">PROJECT MANAGER</option>
+                              <option value="TEAM_MEMBER">TEAM MEMBER</option>
+                              <option value="VIEWER">VIEWER</option>
+                            </select>
+                          )}
                         </td>
 
                         <td className="py-3 px-3 text-right">
@@ -412,6 +453,10 @@ function UsersManagementContent() {
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
                               <span>Updating...</span>
                             </div>
+                          ) : isUserDesignatedAdmin ? (
+                            <Badge variant="outline" className="text-[10px] bg-purple-50/50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-400 border-purple-200 dark:border-purple-800">
+                              System Owner
+                            </Badge>
                           ) : (
                             <Badge variant="outline" className="text-[10px] bg-emerald-50/50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
                               Active
@@ -431,6 +476,7 @@ function UsersManagementContent() {
                 const isUpdating = updatingId === u.id;
                 const isCurrentUser =
                   currentUser && currentUser.email.toLowerCase() === u.email.toLowerCase();
+                const isUserDesignatedAdmin = isDesignatedAdmin(u);
 
                 return (
                   <Card key={u.id} className="p-4 space-y-3 border-slate-200/80 dark:border-slate-800">
@@ -440,9 +486,16 @@ function UsersManagementContent() {
                           {(u.name || u.email).slice(0, 2).toUpperCase()}
                         </div>
                         <div>
-                          <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                            {u.name || 'Unnamed User'}
-                          </h4>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                              {u.name || 'Unnamed User'}
+                            </h4>
+                            {isUserDesignatedAdmin && (
+                              <Badge className="bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300 text-[10px]">
+                                Designated Admin
+                              </Badge>
+                            )}
+                          </div>
                           <a
                             href={`mailto:${u.email}`}
                             className="text-xs text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 hover:underline transition-colors block truncate"
@@ -462,19 +515,25 @@ function UsersManagementContent() {
                     <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
                       <AdminStatusBadge status={u.role} />
 
-                      <select
-                        value={u.role}
-                        disabled={isUpdating}
-                        onChange={(e) =>
-                          handleInitiateRoleChange(u, e.target.value as Role)
-                        }
-                        className="h-8 rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-purple-500 cursor-pointer"
-                      >
-                        <option value="ADMIN">ADMIN</option>
-                        <option value="PROJECT_MANAGER">PROJECT MANAGER</option>
-                        <option value="TEAM_MEMBER">TEAM MEMBER</option>
-                        <option value="VIEWER">VIEWER</option>
-                      </select>
+                      {isUserDesignatedAdmin ? (
+                        <div className="inline-flex items-center gap-1.5 h-8 px-2 rounded-md border border-purple-200 dark:border-purple-900 bg-purple-50/70 dark:bg-purple-950/40 text-purple-800 dark:text-purple-300 text-xs font-semibold">
+                          <Lock className="h-3 w-3 text-purple-600 dark:text-purple-400 shrink-0" />
+                          <span>Protected Admin</span>
+                        </div>
+                      ) : (
+                        <select
+                          value={u.role}
+                          disabled={isUpdating}
+                          onChange={(e) =>
+                            handleInitiateRoleChange(u, e.target.value as Role)
+                          }
+                          className="h-8 rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-purple-500 cursor-pointer"
+                        >
+                          <option value="PROJECT_MANAGER">PROJECT MANAGER</option>
+                          <option value="TEAM_MEMBER">TEAM MEMBER</option>
+                          <option value="VIEWER">VIEWER</option>
+                        </select>
+                      )}
                     </div>
                   </Card>
                 );
@@ -563,7 +622,7 @@ function UsersManagementContent() {
             <Button
               type="button"
               onClick={handleConfirmRoleChange}
-              disabled={isSubmitting}
+              disabled={isSubmitting || (pendingRoleChange ? isDesignatedAdmin(pendingRoleChange.user) || pendingRoleChange.newRole === 'ADMIN' : false)}
               className="bg-purple-600 hover:bg-purple-700 text-white text-xs gap-1.5"
             >
               {isSubmitting ? (
