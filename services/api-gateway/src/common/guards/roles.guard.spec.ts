@@ -153,4 +153,102 @@ describe('RolesGuard', () => {
       await expect(guard.canActivate(deleteContext)).rejects.toThrow(ForbiddenException);
     });
   });
+
+  describe('Security Regression Tests - Health Bypass (VULN-015) & RBAC Hardening', () => {
+    it('should block unauthenticated access to administrative health endpoint /api/admin/health', async () => {
+      const context = createMockContext({ path: '/api/admin/health' });
+      await expect(guard.canActivate(context)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should block unauthenticated access to health sub-paths like /health/admin', async () => {
+      const context = createMockContext({ path: '/health/admin' });
+      await expect(guard.canActivate(context)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should block unauthenticated access to encoded administrative paths like /api%2fadmin/health', async () => {
+      const context = createMockContext({ path: '/api%2fadmin/health' });
+      await expect(guard.canActivate(context)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should allow legitimate public health check with query parameters', async () => {
+      const context = createMockContext({ path: '/api/health?probe=readiness' });
+      expect(await guard.canActivate(context)).toBe(true);
+    });
+
+    it('should reject unknown roles with ForbiddenException', async () => {
+      vi.spyOn(authService, 'getCurrentUser').mockResolvedValue({
+        id: 'hacker-1',
+        role: 'SUPER_ADMIN_IMPOSTOR',
+      } as any);
+
+      const context = createMockContext({
+        path: '/projects',
+        method: 'GET',
+        authHeader: 'Bearer hacker-token',
+      });
+      await expect(guard.canActivate(context)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should reject missing authorization metadata with ForbiddenException', async () => {
+      vi.spyOn(authService, 'getCurrentUser').mockResolvedValue({
+        id: 'no-role-user',
+      } as any);
+
+      const context = createMockContext({
+        path: '/projects',
+        method: 'GET',
+        authHeader: 'Bearer no-role-token',
+      });
+      await expect(guard.canActivate(context)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should block TEAM_MEMBER from modifying teams', async () => {
+      vi.spyOn(authService, 'getCurrentUser').mockResolvedValue({
+        id: 'member-1',
+        role: Role.TEAM_MEMBER,
+      } as any);
+
+      const postTeam = createMockContext({
+        path: '/api/teams',
+        method: 'POST',
+        authHeader: 'Bearer member-token',
+      });
+      await expect(guard.canActivate(postTeam)).rejects.toThrow('Team Members cannot manage teams');
+
+      const patchTeam = createMockContext({
+        path: '/api/teams/t1',
+        method: 'PATCH',
+        authHeader: 'Bearer member-token',
+      });
+      await expect(guard.canActivate(patchTeam)).rejects.toThrow('Team Members cannot manage teams');
+    });
+
+    it('should block TEAM_MEMBER from modifying sprints', async () => {
+      vi.spyOn(authService, 'getCurrentUser').mockResolvedValue({
+        id: 'member-1',
+        role: Role.TEAM_MEMBER,
+      } as any);
+
+      const postSprint = createMockContext({
+        path: '/api/sprints',
+        method: 'POST',
+        authHeader: 'Bearer member-token',
+      });
+      await expect(guard.canActivate(postSprint)).rejects.toThrow('Team Members cannot manage sprints');
+    });
+
+    it('should block TEAM_MEMBER from creating or updating projects', async () => {
+      vi.spyOn(authService, 'getCurrentUser').mockResolvedValue({
+        id: 'member-1',
+        role: Role.TEAM_MEMBER,
+      } as any);
+
+      const postProject = createMockContext({
+        path: '/api/projects',
+        method: 'POST',
+        authHeader: 'Bearer member-token',
+      });
+      await expect(guard.canActivate(postProject)).rejects.toThrow('Team Members cannot create or modify project');
+    });
+  });
 });

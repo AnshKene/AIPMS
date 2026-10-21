@@ -115,7 +115,8 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all registered system users' })
-  async listUsers() {
+  async listUsers(@Headers('authorization') authHeader?: string) {
+    await this.requireAdmin(authHeader);
     return this.authService.listUsers();
   }
 
@@ -128,19 +129,7 @@ export class AuthController {
     @Body() dto: UpdateRoleDto,
     @Headers('authorization') authHeader?: string,
   ) {
-    if (!authHeader) {
-      throw new UnauthorizedException('Authentication token required');
-    }
-
-    const token = this.extractToken(authHeader);
-    const caller = await this.authService.getCurrentUser(token);
-
-    if (caller.role !== Role.ADMIN) {
-      throw new ForbiddenException(
-        `Access Denied: Role '${caller.role}' is not authorized to update user roles. Only administrators can perform this action.`,
-      );
-    }
-
+    const caller = await this.requireAdmin(authHeader);
     return this.authService.updateUserRole(
       id,
       dto.role,
@@ -155,12 +144,14 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Query system audit logs' })
   async getAuditLogs(
+    @Headers('authorization') authHeader?: string,
     @Query('action') action?: string,
     @Query('actorId') actorId?: string,
     @Query('search') search?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
+    await this.requireAdmin(authHeader);
     return this.authService.getAuditLogs({
       action,
       actorId,
@@ -249,6 +240,20 @@ export class AuthController {
   ) {
     const token = this.extractToken(authHeader);
     return this.authService.changePassword(token, dto);
+  }
+
+  private async requireAdmin(authHeader?: string) {
+    if (!authHeader) {
+      throw new UnauthorizedException('Authentication token required');
+    }
+    const token = this.extractToken(authHeader);
+    const caller = await this.authService.getCurrentUser(token);
+    if (caller.role !== Role.ADMIN) {
+      throw new ForbiddenException(
+        `Access Denied: Role '${caller.role}' is not authorized. Only administrators can perform this action.`,
+      );
+    }
+    return caller;
   }
 
   private extractToken(authHeader?: string): string {

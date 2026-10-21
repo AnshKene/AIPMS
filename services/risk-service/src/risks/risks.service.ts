@@ -72,8 +72,8 @@ export class RisksService {
     return this.supabase;
   }
 
-  private extractUserId(authHeader?: string): string | null {
-    if (!authHeader) return null;
+  private extractUserInfo(authHeader?: string): { id: string | null; role: string | null } {
+    if (!authHeader) return { id: null, role: null };
     try {
       const token = authHeader.replace(/^Bearer\s+/i, '');
       const parts = token.split('.');
@@ -81,94 +81,43 @@ export class RisksService {
         const payload = JSON.parse(
           Buffer.from(parts[1], 'base64').toString('utf-8'),
         );
-        return payload.sub || payload.id || null;
+        const role =
+          payload.app_metadata?.role ||
+          payload.user_metadata?.role ||
+          payload.role ||
+          null;
+        return {
+          id: payload.sub || payload.id || null,
+          role,
+        };
       }
     } catch (e) {
-      this.logger.warn(`Could not parse user ID from auth token: ${e}`);
+      this.logger.warn(`Could not parse user info from auth token: ${e}`);
     }
-    return null;
+    return { id: null, role: null };
   }
 
-  private async ensureProjectAccess(
+  private async checkProjectAccess(
     client: SupabaseClient,
     projectId: string,
-    userId: string,
+    role: string | null,
   ): Promise<void> {
-    try {
-      // 1. Check if user already has project access according to public.aipms_user_has_project_access
-      const { data: hasAccess } = await client.rpc(
+    if (role === 'ADMIN') {
+      return;
+    }
+    if (typeof client.rpc === 'function') {
+      const { data: hasAccess, error } = await client.rpc(
         'aipms_user_has_project_access',
         { p_project_id: projectId },
       );
-
-      if (hasAccess === true) {
-        return;
+      if (error) {
+        this.logger.warn(`Project access check error: ${error.message}`);
       }
-
-      this.logger.log(
-        `User ${userId} does not have project access to ${projectId}. Ensuring project team membership...`,
-      );
-
-      // 2. Query team associated with this project
-      let teamId: string | null = null;
-      const { data: teams } = await client
-        .from('teams')
-        .select('id')
-        .eq('project_id', projectId)
-        .limit(1);
-
-      if (teams && teams.length > 0) {
-        teamId = teams[0].id;
-      } else {
-        const { data: defaultTeams } = await this.supabase
-          .from('teams')
-          .select('id')
-          .eq('project_id', projectId)
-          .limit(1);
-        if (defaultTeams && defaultTeams.length > 0) {
-          teamId = defaultTeams[0].id;
-        }
+      if (hasAccess === false) {
+        throw new ForbiddenException(
+          'Access Denied: You do not have permission to access this project',
+        );
       }
-
-      if (!teamId) {
-        const newTeamId = randomUUID();
-        const { error: teamCreateErr } = await this.supabase
-          .from('teams')
-          .insert([
-            {
-              id: newTeamId,
-              project_id: projectId,
-              name: 'Project Team',
-              description: 'Auto-created project team for member collaboration',
-            },
-          ]);
-        if (!teamCreateErr) {
-          teamId = newTeamId;
-        }
-      }
-
-      if (teamId) {
-        const { error: memberError } = await client
-          .from('team_members')
-          .insert([
-            {
-              team_id: teamId,
-              user_id: userId,
-              role: 'MEMBER',
-            },
-          ]);
-        if (memberError) {
-          this.logger.warn(
-            `Note on adding user ${userId} to team ${teamId}: ${memberError.message}`,
-          );
-        } else {
-          this.logger.log(
-            `Successfully ensured team membership for user ${userId} on team ${teamId}`,
-          );
-        }
-      }
-    } catch (err: any) {
-      this.logger.warn(`ensureProjectAccess encountered an issue: ${err?.message}`);
     }
   }
 
@@ -198,11 +147,13 @@ export class RisksService {
     }
 
     const client = this.getSupabaseClient(authHeader);
-    const userId = this.extractUserId(authHeader);
+    const userInfo = this.extractUserInfo(authHeader);
 
-    if (userId) {
-      await this.ensureProjectAccess(client, dto.project_id, userId);
+    if (userInfo.role === 'VIEWER') {
+      throw new ForbiddenException('Access Denied: Viewers cannot create risks');
     }
+
+    await this.checkProjectAccess(client, dto.project_id, userInfo.role);
 
     const riskScore = this.calculateRiskScore(dto.probability, dto.impact);
     const id = randomUUID();
@@ -242,23 +193,12 @@ export class RisksService {
         lastError = selectRes.error;
       }
     } else {
-      // In real execution:
-      // Perform authenticated client insert (without .select() to avoid PostgREST RETURNING * RLS evaluation failure)
+      // Authenticated client insert without privileged fallback
       const res = await insertBuilder;
       if (!res?.error) {
         createdRecord = newRisk;
       } else {
         lastError = res.error;
-        this.logger.warn(
-          `Authenticated client risk insert failed: ${res.error.message}. Trying service client fallback...`,
-        );
-        const fallbackRes = await this.supabase.from('risks').insert([newRisk]);
-        if (!fallbackRes?.error) {
-          createdRecord = newRisk;
-          lastError = null;
-        } else {
-          lastError = fallbackRes.error;
-        }
       }
     }
 
@@ -286,6 +226,12 @@ export class RisksService {
     }
 
     const client = this.getSupabaseClient(authHeader);
+
+    if (query.project_id) {
+      const userInfo = this.extractUserInfo(authHeader);
+      await this.checkProjectAccess(client, query.project_id, userInfo.role);
+    }
+
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.max(1, Math.min(100, query.limit ?? 20));
     const offset = (page - 1) * limit;
@@ -369,12 +315,16 @@ export class RisksService {
     }
 
     if (data) {
+      const userInfo = this.extractUserInfo(authHeader);
+      await this.checkProjectAccess(client, data.project_id, userInfo.role);
       this.memoryRisks.set(data.id, data);
       return this.formatRisk(data);
     }
 
     const mem = this.memoryRisks.get(id);
     if (mem) {
+      const userInfo = this.extractUserInfo(authHeader);
+      await this.checkProjectAccess(client, mem.project_id, userInfo.role);
       return this.formatRisk(mem);
     }
 
@@ -393,6 +343,17 @@ export class RisksService {
 
     const client = this.getSupabaseClient(authHeader);
     const existing = await this.findOne(id, authHeader);
+
+    if ((dto as any).project_id && (dto as any).project_id !== existing.project_id) {
+      throw new BadRequestException('Cannot change the project of an existing risk');
+    }
+
+    const userInfo = this.extractUserInfo(authHeader);
+    if (userInfo.role === 'VIEWER') {
+      throw new ForbiddenException('Access Denied: Viewers cannot modify risks');
+    }
+
+    await this.checkProjectAccess(client, existing.project_id, userInfo.role);
 
     const effectiveProbability = dto.probability ?? existing.probability;
     const effectiveImpact = dto.impact ?? existing.impact;
@@ -442,16 +403,6 @@ export class RisksService {
         updatedRow = { ...existing, ...updateData };
       } else {
         updateError = res.error;
-        const fallbackRes = await this.supabase
-          .from('risks')
-          .update(updateData)
-          .eq('id', id);
-        if (!fallbackRes?.error) {
-          updatedRow = { ...existing, ...updateData };
-          updateError = null;
-        } else {
-          updateError = fallbackRes.error;
-        }
       }
     }
 
@@ -477,7 +428,14 @@ export class RisksService {
     this.validateUuid(id);
 
     const client = this.getSupabaseClient(authHeader);
-    await this.findOne(id, authHeader);
+    const existing = await this.findOne(id, authHeader);
+
+    const userInfo = this.extractUserInfo(authHeader);
+    if (userInfo.role === 'VIEWER') {
+      throw new ForbiddenException('Access Denied: Viewers cannot delete risks');
+    }
+
+    await this.checkProjectAccess(client, existing.project_id, userInfo.role);
 
     let deleteError: any = null;
     const { error } = await client
@@ -487,15 +445,6 @@ export class RisksService {
 
     if (error) {
       deleteError = error;
-      const fallbackRes = await this.supabase
-        .from('risks')
-        .delete()
-        .eq('id', id);
-      if (!fallbackRes?.error) {
-        deleteError = null;
-      } else {
-        deleteError = fallbackRes.error;
-      }
     }
 
     if (deleteError) {
