@@ -86,6 +86,107 @@ describe('RolesGuard', () => {
       expect(canActivate).toBe(true);
     });
 
+    it('should allow designated administrator Ansh full access', async () => {
+      vi.spyOn(authService, 'getCurrentUser').mockResolvedValue({
+        id: '66544acc-4e3d-4b3b-b3f3-44971c6a9347',
+        email: 'admin.ansh@aipms.com',
+        name: 'Ansh',
+        role: Role.ADMIN,
+      } as any);
+
+      const context = createMockContext({
+        path: '/admin/users',
+        method: 'GET',
+        authHeader: 'Bearer ansh-admin-token',
+      });
+      const canActivate = await guard.canActivate(context);
+      expect(canActivate).toBe(true);
+    });
+
+    it('should reject imposter claiming ADMIN in production environment', async () => {
+      const prevEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+      try {
+        vi.spyOn(authService, 'getCurrentUser').mockResolvedValue({
+          id: 'imposter-id-999',
+          email: 'imposter@example.com',
+          role: Role.ADMIN,
+        } as any);
+
+        const context = createMockContext({
+          path: '/admin/users',
+          method: 'GET',
+          authHeader: 'Bearer imposter-token',
+        });
+        await expect(guard.canActivate(context)).rejects.toThrow(ForbiddenException);
+      } finally {
+        process.env.NODE_ENV = prevEnv;
+      }
+    });
+
+    it('should reject test ID admin-1 claiming ADMIN in production environment', async () => {
+      const prevEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+      try {
+        vi.spyOn(authService, 'getCurrentUser').mockResolvedValue({
+          id: 'admin-1',
+          email: 'admin1@example.com',
+          role: Role.ADMIN,
+        } as any);
+
+        const context = createMockContext({
+          path: '/admin/users',
+          method: 'GET',
+          authHeader: 'Bearer admin-1-token',
+        });
+        await expect(guard.canActivate(context)).rejects.toThrow(ForbiddenException);
+      } finally {
+        process.env.NODE_ENV = prevEnv;
+      }
+    });
+
+    it('should reject test ID admin-user-001 claiming ADMIN in production environment', async () => {
+      const prevEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+      try {
+        vi.spyOn(authService, 'getCurrentUser').mockResolvedValue({
+          id: 'admin-user-001',
+          email: 'admin@aipms.com',
+          role: Role.ADMIN,
+        } as any);
+
+        const context = createMockContext({
+          path: '/admin/users',
+          method: 'GET',
+          authHeader: 'Bearer admin-user-001-token',
+        });
+        await expect(guard.canActivate(context)).rejects.toThrow(ForbiddenException);
+      } finally {
+        process.env.NODE_ENV = prevEnv;
+      }
+    });
+
+    it('should reject test ID usr-123 claiming ADMIN in production environment', async () => {
+      const prevEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+      try {
+        vi.spyOn(authService, 'getCurrentUser').mockResolvedValue({
+          id: 'usr-123',
+          email: 'user@example.com',
+          role: Role.ADMIN,
+        } as any);
+
+        const context = createMockContext({
+          path: '/admin/users',
+          method: 'GET',
+          authHeader: 'Bearer usr-123-token',
+        });
+        await expect(guard.canActivate(context)).rejects.toThrow(ForbiddenException);
+      } finally {
+        process.env.NODE_ENV = prevEnv;
+      }
+    });
+
     it('should block non-ADMIN from administrative user management endpoints', async () => {
       vi.spyOn(authService, 'getCurrentUser').mockResolvedValue({
         id: 'member-1',

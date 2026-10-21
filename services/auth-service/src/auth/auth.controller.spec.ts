@@ -117,4 +117,57 @@ describe('AuthController (Security Direct Access Tests)', () => {
       expect(authService.getAuditLogs).toHaveBeenCalled();
     });
   });
+
+  describe('Direct access to PATCH /auth/users/:id/role', () => {
+    it('should reject direct access with no token', async () => {
+      await expect(
+        controller.updateUserRole('user-1', { role: Role.PROJECT_MANAGER }, undefined),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should reject direct access with invalid token', async () => {
+      await expect(
+        controller.updateUserRole(
+          'user-1',
+          { role: Role.PROJECT_MANAGER },
+          'Bearer garbage-invalid-token',
+        ),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should reject direct access with Team Member token', async () => {
+      await expect(
+        controller.updateUserRole(
+          'user-1',
+          { role: Role.PROJECT_MANAGER },
+          'Bearer member-token',
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should reject direct access with Viewer token', async () => {
+      await expect(
+        controller.updateUserRole(
+          'user-1',
+          { role: Role.PROJECT_MANAGER },
+          'Bearer viewer-token',
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should allow direct access with Admin token and forward caller context', async () => {
+      await controller.updateUserRole(
+        'user-1',
+        { role: Role.PROJECT_MANAGER },
+        'Bearer admin-token',
+      );
+      expect(authService.updateUserRole).toHaveBeenCalledWith(
+        'user-1',
+        Role.PROJECT_MANAGER,
+        Role.ADMIN,
+        'admin-001',
+        'admin@aipms.com',
+      );
+    });
+  });
 });
