@@ -1,6 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { describe, beforeEach, it, expect, vi } from 'vitest';
 import { ProjectsService } from './projects.service.js';
 import { ProjectStatus } from './enums/project-status.enum.js';
@@ -456,6 +461,359 @@ describe('ProjectsService', () => {
       vi.spyOn(service, 'findOne').mockResolvedValue(service['formatProject'](nonArchivedProject) as any);
 
       await expect(service.unarchive(validUuid)).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('Project Owner authorization', () => {
+    const otherUserUuid = 'b2c3d4e5-6789-41bc-a234-2345678901bc';
+    const adminUuid = '66544acc-4e3d-4b3b-b3f3-44971c6a9347';
+
+    describe('create with role enforcement', () => {
+      it('should reject project creation by VIEWER role with ForbiddenException', async () => {
+        const mockGetUser = vi.fn().mockResolvedValue({
+          data: { user: { id: ownerUuid, app_metadata: { role: 'VIEWER' } } },
+          error: null,
+        });
+
+        (service as any).getSupabaseClient = vi.fn().mockReturnValue({
+          auth: { getUser: mockGetUser },
+        });
+
+        await expect(
+          service.create({ name: 'Viewer Project' }, 'Bearer viewer-token'),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('should allow ADMIN to specify another user as initial ownerId', async () => {
+        const mockProject = {
+          id: validUuid,
+          name: 'Admin Delegated Project',
+          owner_id: otherUserUuid,
+          status: 'PLANNING',
+        };
+
+        const mockSingle = vi.fn().mockResolvedValue({ data: mockProject, error: null });
+        const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+        const mockInsert = vi.fn().mockReturnValue({ select: mockSelect });
+
+        const mockGetUser = vi.fn().mockResolvedValue({
+          data: {
+            user: {
+              id: adminUuid,
+              email: 'admin.ansh@aipms.com',
+              app_metadata: { role: 'ADMIN' },
+            },
+          },
+          error: null,
+        });
+
+        (service as any).getSupabaseClient = vi.fn().mockReturnValue({
+          auth: { getUser: mockGetUser },
+          from: vi.fn().mockReturnValue({ insert: mockInsert }),
+        });
+
+        const result = await service.create(
+          { name: 'Admin Delegated Project', ownerId: otherUserUuid },
+          'Bearer admin-token',
+        );
+
+        expect(result.ownerId).toBe(otherUserUuid);
+      });
+    });
+
+    describe('update with ownership enforcement', () => {
+      it('should reject arbitrary attempt to change ownerId via update payload', async () => {
+        await expect(
+          service.update(validUuid, { name: 'Attempted Hijack', ownerId: otherUserUuid } as any),
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('should allow project owner to update settings on their own project', async () => {
+        const existingProject = {
+          id: validUuid,
+          name: 'Owner Project',
+          owner_id: ownerUuid,
+          status: 'PLANNING',
+        };
+        const updatedProject = {
+          ...existingProject,
+          name: 'Owner Project Updated',
+        };
+
+        vi.spyOn(service, 'findOne').mockResolvedValue(service['formatProject'](existingProject) as any);
+
+        const mockSingle = vi.fn().mockResolvedValue({ data: updatedProject, error: null });
+        const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+        const mockEq = vi.fn().mockReturnValue({ select: mockSelect });
+        const mockUpdate = vi.fn().mockReturnValue({ eq: mockEq });
+
+        const mockGetUser = vi.fn().mockResolvedValue({
+          data: { user: { id: ownerUuid, app_metadata: { role: 'PROJECT_MANAGER' } } },
+          error: null,
+        });
+
+        (service as any).getSupabaseClient = vi.fn().mockReturnValue({
+          auth: { getUser: mockGetUser },
+          from: vi.fn().mockReturnValue({ update: mockUpdate }),
+        });
+
+        const result = await service.update(
+          validUuid,
+          { name: 'Owner Project Updated' },
+          'Bearer owner-token',
+        );
+
+        expect(result.name).toBe('Owner Project Updated');
+      });
+
+      it('should deny a non-owner Project Manager on another user project with ForbiddenException', async () => {
+        const existingProject = {
+          id: validUuid,
+          name: 'Other User Project',
+          owner_id: ownerUuid,
+          status: 'PLANNING',
+        };
+
+        vi.spyOn(service, 'findOne').mockResolvedValue(service['formatProject'](existingProject) as any);
+
+        const mockGetUser = vi.fn().mockResolvedValue({
+          data: { user: { id: otherUserUuid, app_metadata: { role: 'PROJECT_MANAGER' } } },
+          error: null,
+        });
+
+        (service as any).getSupabaseClient = vi.fn().mockReturnValue({
+          auth: { getUser: mockGetUser },
+        });
+
+        await expect(
+          service.update(validUuid, { name: 'Unauthorized Update' }, 'Bearer other-pm-token'),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('should deny VIEWER role from updating project settings with ForbiddenException', async () => {
+        const existingProject = {
+          id: validUuid,
+          name: 'Project',
+          owner_id: ownerUuid,
+          status: 'PLANNING',
+        };
+
+        vi.spyOn(service, 'findOne').mockResolvedValue(service['formatProject'](existingProject) as any);
+
+        const mockGetUser = vi.fn().mockResolvedValue({
+          data: { user: { id: ownerUuid, app_metadata: { role: 'VIEWER' } } },
+          error: null,
+        });
+
+        (service as any).getSupabaseClient = vi.fn().mockReturnValue({
+          auth: { getUser: mockGetUser },
+        });
+
+        await expect(
+          service.update(validUuid, { name: 'Viewer Update' }, 'Bearer viewer-token'),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('should allow System Admin to update any project settings', async () => {
+        const existingProject = {
+          id: validUuid,
+          name: 'User Project',
+          owner_id: ownerUuid,
+          status: 'PLANNING',
+        };
+        const updatedProject = {
+          ...existingProject,
+          name: 'Admin Overridden Name',
+        };
+
+        vi.spyOn(service, 'findOne').mockResolvedValue(service['formatProject'](existingProject) as any);
+
+        const mockSingle = vi.fn().mockResolvedValue({ data: updatedProject, error: null });
+        const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+        const mockEq = vi.fn().mockReturnValue({ select: mockSelect });
+        const mockUpdate = vi.fn().mockReturnValue({ eq: mockEq });
+
+        const mockGetUser = vi.fn().mockResolvedValue({
+          data: {
+            user: {
+              id: adminUuid,
+              email: 'admin.ansh@aipms.com',
+              app_metadata: { role: 'ADMIN' },
+            },
+          },
+          error: null,
+        });
+
+        (service as any).getSupabaseClient = vi.fn().mockReturnValue({
+          auth: { getUser: mockGetUser },
+          from: vi.fn().mockReturnValue({ update: mockUpdate }),
+        });
+
+        const result = await service.update(
+          validUuid,
+          { name: 'Admin Overridden Name' },
+          'Bearer admin-token',
+        );
+
+        expect(result.name).toBe('Admin Overridden Name');
+      });
+    });
+
+    describe('archive and unarchive with ownership enforcement', () => {
+      it('should deny non-owner from archiving project with ForbiddenException', async () => {
+        const existingProject = {
+          id: validUuid,
+          name: 'Project',
+          owner_id: ownerUuid,
+          status: 'PLANNING',
+        };
+
+        vi.spyOn(service, 'findOne').mockResolvedValue(service['formatProject'](existingProject) as any);
+
+        const mockGetUser = vi.fn().mockResolvedValue({
+          data: { user: { id: otherUserUuid, app_metadata: { role: 'PROJECT_MANAGER' } } },
+          error: null,
+        });
+
+        (service as any).getSupabaseClient = vi.fn().mockReturnValue({
+          auth: { getUser: mockGetUser },
+        });
+
+        await expect(
+          service.archive(validUuid, 'Bearer other-user-token'),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('should deny non-owner from unarchiving project with ForbiddenException', async () => {
+        const existingProject = {
+          id: validUuid,
+          name: 'Project',
+          owner_id: ownerUuid,
+          status: 'ARCHIVED',
+        };
+
+        vi.spyOn(service, 'findOne').mockResolvedValue(service['formatProject'](existingProject) as any);
+
+        const mockGetUser = vi.fn().mockResolvedValue({
+          data: { user: { id: otherUserUuid, app_metadata: { role: 'PROJECT_MANAGER' } } },
+          error: null,
+        });
+
+        (service as any).getSupabaseClient = vi.fn().mockReturnValue({
+          auth: { getUser: mockGetUser },
+        });
+
+        await expect(
+          service.unarchive(validUuid, 'Bearer other-user-token'),
+        ).rejects.toThrow(ForbiddenException);
+      });
+    });
+
+    describe('transferOwnership', () => {
+      it('should allow owner to transfer ownership to another user', async () => {
+        const existingProject = {
+          id: validUuid,
+          name: 'Project',
+          owner_id: ownerUuid,
+          status: 'PLANNING',
+        };
+        const transferredProject = {
+          ...existingProject,
+          owner_id: otherUserUuid,
+        };
+
+        vi.spyOn(service, 'findOne').mockResolvedValue(service['formatProject'](existingProject) as any);
+
+        const mockSingle = vi.fn().mockResolvedValue({ data: transferredProject, error: null });
+        const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+        const mockEq = vi.fn().mockReturnValue({ select: mockSelect });
+        const mockUpdate = vi.fn().mockReturnValue({ eq: mockEq });
+
+        const mockGetUser = vi.fn().mockResolvedValue({
+          data: { user: { id: ownerUuid, app_metadata: { role: 'PROJECT_MANAGER' } } },
+          error: null,
+        });
+
+        (service as any).getSupabaseClient = vi.fn().mockReturnValue({
+          auth: { getUser: mockGetUser },
+          from: vi.fn().mockReturnValue({ update: mockUpdate }),
+        });
+
+        const result = await service.transferOwnership(
+          validUuid,
+          { newOwnerId: otherUserUuid },
+          'Bearer owner-token',
+        );
+
+        expect(result.ownerId).toBe(otherUserUuid);
+        expect(mockUpdate).toHaveBeenCalledWith(
+          expect.objectContaining({ owner_id: otherUserUuid }),
+        );
+      });
+
+      it('should deny non-owner from transferring project ownership with ForbiddenException', async () => {
+        const existingProject = {
+          id: validUuid,
+          name: 'Project',
+          owner_id: ownerUuid,
+          status: 'PLANNING',
+        };
+
+        vi.spyOn(service, 'findOne').mockResolvedValue(service['formatProject'](existingProject) as any);
+
+        const mockGetUser = vi.fn().mockResolvedValue({
+          data: { user: { id: otherUserUuid, app_metadata: { role: 'PROJECT_MANAGER' } } },
+          error: null,
+        });
+
+        (service as any).getSupabaseClient = vi.fn().mockReturnValue({
+          auth: { getUser: mockGetUser },
+        });
+
+        await expect(
+          service.transferOwnership(
+            validUuid,
+            { newOwnerId: 'c3d4e5f6-7890-42cd-a345-3456789012cd' },
+            'Bearer non-owner-token',
+          ),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('should reject ownership transfer of an archived project with BadRequestException', async () => {
+        const existingArchived = {
+          id: validUuid,
+          name: 'Archived Project',
+          owner_id: ownerUuid,
+          status: 'ARCHIVED',
+        };
+
+        vi.spyOn(service, 'findOne').mockResolvedValue(service['formatProject'](existingArchived) as any);
+
+        await expect(
+          service.transferOwnership(validUuid, { newOwnerId: otherUserUuid }),
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('should reject invalid newOwnerId format with BadRequestException', async () => {
+        await expect(
+          service.transferOwnership(validUuid, { newOwnerId: 'not-a-valid-uuid' }),
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('should reject ownership transfer to the current owner with BadRequestException', async () => {
+        const existingProject = {
+          id: validUuid,
+          name: 'Project',
+          owner_id: ownerUuid,
+          status: 'PLANNING',
+        };
+
+        vi.spyOn(service, 'findOne').mockResolvedValue(service['formatProject'](existingProject) as any);
+
+        await expect(
+          service.transferOwnership(validUuid, { newOwnerId: ownerUuid }),
+        ).rejects.toThrow('The specified user is already the current owner of this project.');
+      });
     });
   });
 });

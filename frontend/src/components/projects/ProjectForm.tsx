@@ -26,6 +26,8 @@ interface ProjectFormProps {
   mode: Mode;
   /** Required in create mode — the current authenticated user's ID */
   ownerId?: string;
+  /** Whether the current user is a System Administrator */
+  isAdmin?: boolean;
   /** Existing project data — required in edit mode */
   project?: Project;
   /** Render the trigger element (e.g. a button) */
@@ -42,6 +44,7 @@ interface FormState {
   status: ProjectStatus;
   startDate: string;
   endDate: string;
+  ownerIdInput: string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -62,6 +65,7 @@ function toISOStringOrUndefined(dateInput: string): string | undefined {
 export function ProjectForm({
   mode,
   ownerId,
+  isAdmin,
   project,
   trigger,
   onSuccess,
@@ -78,8 +82,9 @@ export function ProjectForm({
       status: project?.status ?? 'PLANNING',
       startDate: toDateInputValue(project?.startDate),
       endDate: toDateInputValue(project?.endDate),
+      ownerIdInput: mode === 'create' ? ownerId ?? '' : project?.ownerId ?? '',
     }),
-    [project],
+    [project, mode, ownerId],
   );
 
   const [form, setForm] = React.useState<FormState>(initialState);
@@ -120,13 +125,18 @@ export function ProjectForm({
       return;
     }
 
+    const resolvedOwner =
+      mode === 'create' && isAdmin && form.ownerIdInput.trim()
+        ? form.ownerIdInput.trim()
+        : ownerId || undefined;
+
     const payload: CreateProjectPayload | UpdateProjectPayload = {
       name: form.name.trim(),
       description: form.description.trim() || undefined,
       status: form.status,
       startDate: toISOStringOrUndefined(form.startDate),
       endDate: toISOStringOrUndefined(form.endDate),
-      ...(mode === 'create' && ownerId ? { ownerId } : {}),
+      ...(mode === 'create' && resolvedOwner ? { ownerId: resolvedOwner } : {}),
     };
 
     setSubmitting(true);
@@ -242,6 +252,46 @@ export function ProjectForm({
               min={form.startDate || undefined}
             />
           </div>
+
+          {/* Project Owner Section */}
+          {mode === 'create' ? (
+            isAdmin ? (
+              <div className="space-y-1.5 p-3 rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/20">
+                <label htmlFor="proj-owner-id" className="block text-xs font-semibold text-slate-800 dark:text-slate-200">
+                  Project Owner User ID
+                </label>
+                <Input
+                  id="proj-owner-id"
+                  name="ownerIdInput"
+                  value={form.ownerIdInput}
+                  onChange={handleChange}
+                  placeholder="Owner UUID (defaults to you)"
+                  disabled={submitting}
+                  className="font-mono text-xs"
+                />
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  As System Administrator, you may assign initial ownership to another user.
+                </p>
+              </div>
+            ) : (
+              <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50">
+                <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">Project Ownership</p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  You will automatically become the initial Project Owner upon creation.
+                </p>
+              </div>
+            )
+          ) : (
+            <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50">
+              <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">Project Owner</p>
+              <p className="text-[11px] font-mono text-slate-600 dark:text-slate-400 mt-0.5 truncate">
+                {project?.ownerId}
+              </p>
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
+                Project ownership cannot be altered via edit settings. Use the explicit Transfer Ownership action on the project detail page.
+              </p>
+            </div>
+          )}
 
           {/* Error */}
           <FormError message={error} id="project-form-error" />

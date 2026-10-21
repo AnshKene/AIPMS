@@ -225,6 +225,7 @@ export default function ProjectsPage() {
               <ProjectForm
                 mode="create"
                 ownerId={user?.id ?? ''}
+                isAdmin={user?.role === 'ADMIN'}
                 trigger={
                   <Button size="sm" className="gap-1.5 shadow-xs font-medium" id="create-project-btn">
                     <Plus className="h-4 w-4" />
@@ -348,6 +349,7 @@ export default function ProjectsPage() {
                   project={project}
                   taskSummary={tasksMap[project.id]}
                   riskCount={risksMap[project.id]?.filter((r) => r.status !== 'CLOSED' && r.status !== 'RESOLVED').length}
+                  currentUserId={user?.id}
                 />
               ))}
             </div>

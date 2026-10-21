@@ -98,3 +98,14 @@ export async function archiveProject(id: string): Promise<Project> {
 export async function unarchiveProject(id: string): Promise<Project> {
   return apiClient.patch<Project>(`projects/${id}/unarchive`);
 }
+
+export interface TransferOwnershipPayload {
+  newOwnerId: string;
+}
+
+export async function transferProjectOwnership(
+  id: string,
+  payload: TransferOwnershipPayload,
+): Promise<Project> {
+  return apiClient.post<Project>(`projects/${id}/transfer-ownership`, payload);
+}
