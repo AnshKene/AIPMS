@@ -165,6 +165,17 @@ describe('Project Service (e2e)', () => {
 
       expect(response.body).toEqual(updatedProject);
     });
+    it('should reject attempted ownership update in PATCH payload with 400 Bad Request', async () => {
+      const response = await request(app.getHttpServer())
+        .patch(`/api/projects/${validUuid}`)
+        .send({
+          name: 'AIPMS Phase 2',
+          ownerId: 'b2c3d4e5-6789-41bc-a234-2345678901bc',
+        })
+        .expect(400);
+
+      expect(response.body.statusCode).toBe(400);
+    });
   });
 
   describe('DELETE /api/projects/:id', () => {
@@ -181,6 +192,39 @@ describe('Project Service (e2e)', () => {
         .expect(200);
 
       expect(response.body).toEqual(archivedProject);
+    });
+  });
+
+  describe('POST /api/projects/:id/transfer-ownership', () => {
+    it('should transfer ownership on valid payload', async () => {
+      const newOwnerUuid = 'b2c3d4e5-6789-41bc-a234-2345678901bc';
+      const transferredProject = {
+        id: validUuid,
+        name: 'AIPMS',
+        ownerId: newOwnerUuid,
+      };
+
+      vi.spyOn(projectsService, 'transferOwnership').mockResolvedValue(transferredProject as any);
+
+      const response = await request(app.getHttpServer())
+        .post(`/api/projects/${validUuid}/transfer-ownership`)
+        .send({
+          newOwnerId: newOwnerUuid,
+        })
+        .expect(200);
+
+      expect(response.body).toEqual(transferredProject);
+    });
+
+    it('should return 400 on invalid newOwnerId format', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`/api/projects/${validUuid}/transfer-ownership`)
+        .send({
+          newOwnerId: 'invalid-uuid',
+        })
+        .expect(400);
+
+      expect(response.body.statusCode).toBe(400);
     });
   });
 });

@@ -16,6 +16,7 @@ import { ProjectsService } from './projects.service.js';
 import { CreateProjectDto } from './dto/create-project.dto.js';
 import { UpdateProjectDto } from './dto/update-project.dto.js';
 import { QueryProjectDto } from './dto/query-project.dto.js';
+import { TransferOwnershipDto } from './dto/transfer-ownership.dto.js';
 
 @ApiTags('Projects')
 @Controller('projects')
@@ -132,5 +133,23 @@ export class ProjectsController {
     return authHeader
       ? this.projectsService.archive(id, authHeader)
       : this.projectsService.archive(id);
+  }
+
+  @Post(':id/transfer-ownership')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Transfer project ownership to a new owner' })
+  @ApiParam({ name: 'id', description: 'Project UUID' })
+  @ApiResponse({ status: 200, description: 'Ownership transferred successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid UUID format or project is archived' })
+  @ApiResponse({ status: 403, description: 'Forbidden - only project owner or admin can transfer ownership' })
+  @ApiResponse({ status: 404, description: 'Project not found' })
+  async transferOwnership(
+    @Param('id') id: string,
+    @Body() transferOwnershipDto: TransferOwnershipDto,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return authHeader
+      ? this.projectsService.transferOwnership(id, transferOwnershipDto, authHeader)
+      : this.projectsService.transferOwnership(id, transferOwnershipDto);
   }
 }

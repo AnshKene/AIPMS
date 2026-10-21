@@ -15,6 +15,7 @@ describe('ProjectsController', () => {
     update: vi.fn(),
     archive: vi.fn(),
     unarchive: vi.fn(),
+    transferOwnership: vi.fn(),
   };
 
   const validUuid = 'd0a1b2c3-4567-49ab-a123-0123456789ab';
@@ -99,6 +100,17 @@ describe('ProjectsController', () => {
 
     const result = await controller.unarchive(validUuid);
     expect(service.unarchive).toHaveBeenCalledWith(validUuid);
+    expect(result).toEqual(expected);
+  });
+
+  it('should call projectsService.transferOwnership', async () => {
+    const newOwnerUuid = 'b2c3d4e5-6789-41bc-c234-2345678901bc';
+    const dto = { newOwnerId: newOwnerUuid };
+    const expected = { id: validUuid, ownerId: newOwnerUuid };
+    mockProjectsService.transferOwnership.mockResolvedValue(expected);
+
+    const result = await controller.transferOwnership(validUuid, dto);
+    expect(service.transferOwnership).toHaveBeenCalledWith(validUuid, dto);
     expect(result).toEqual(expected);
   });
 });
