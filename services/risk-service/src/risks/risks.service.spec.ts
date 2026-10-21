@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { describe, beforeEach, it, expect, vi } from 'vitest';
 import { RisksService } from './risks.service.js';
 import { RiskProbability } from './enums/risk-probability.enum.js';
@@ -324,6 +324,7 @@ describe('RisksService', () => {
     it('16. should delete an existing risk successfully', async () => {
       vi.spyOn(service, 'findOne').mockResolvedValue({
         id: validUuid,
+        project_id: projectUuid,
       } as any);
 
       const mockEq = vi.fn().mockResolvedValue({ error: null });
@@ -336,6 +337,122 @@ describe('RisksService', () => {
       const result = await service.remove(validUuid);
       expect(result.message).toBe('Risk deleted successfully');
       expect(result.id).toBe(validUuid);
+    });
+  });
+
+  describe('Security Regression Tests - Privilege Escalation & Fallback Removal (VULN-012)', () => {
+    const makeJwt = (payload: Record<string, any>) =>
+      `Bearer eyJhbGciOiJIUzI1NiJ9.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.sig`;
+
+    it('should reject risk creation if user does not have project access according to RPC', async () => {
+      const token = makeJwt({ sub: 'unauthorized-user', role: 'TEAM_MEMBER' });
+      const mockClient = {
+        rpc: vi.fn().mockResolvedValue({ data: false, error: null }),
+        from: vi.fn(),
+      };
+      vi.spyOn(service as any, 'getSupabaseClient').mockReturnValue(mockClient as any);
+
+      await expect(
+        service.create(
+          {
+            project_id: projectUuid,
+            title: 'Unauthorized Risk',
+            probability: RiskProbability.LOW,
+            impact: RiskImpact.LOW,
+          },
+          token,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+
+      expect(mockClient.rpc).toHaveBeenCalledWith('aipms_user_has_project_access', {
+        p_project_id: projectUuid,
+      });
+      // Ensure no team membership backdoor or insert was attempted
+      expect(mockClient.from).not.toHaveBeenCalled();
+    });
+
+    it('should reject risk creation if caller has VIEWER role', async () => {
+      const viewerToken = makeJwt({ sub: 'viewer-user', role: 'VIEWER' });
+
+      await expect(
+        service.create(
+          {
+            project_id: projectUuid,
+            title: 'Viewer Risk',
+            probability: RiskProbability.LOW,
+            impact: RiskImpact.LOW,
+          },
+          viewerToken,
+        ),
+      ).rejects.toThrow('Access Denied: Viewers cannot create risks');
+    });
+
+    it('should NEVER fall back to privileged service-role insert when client insert fails with RLS error', async () => {
+      const token = makeJwt({ sub: 'normal-user', role: 'TEAM_MEMBER' });
+      const insertMock = {
+        then: (onSuccess: any, onFail: any) =>
+          Promise.resolve({ error: { code: '42501', message: 'row-level security violation' } }).then(onSuccess, onFail),
+      };
+
+      const mockClient = {
+        rpc: vi.fn().mockResolvedValue({ data: true, error: null }),
+        from: vi.fn().mockReturnValue({ insert: vi.fn().mockReturnValue(insertMock) }),
+      };
+      vi.spyOn(service as any, 'getSupabaseClient').mockReturnValue(mockClient as any);
+
+      const serviceRoleSupabaseMock = {
+        from: vi.fn(),
+      };
+      (service as any).supabase = serviceRoleSupabaseMock;
+
+      await expect(
+        service.create(
+          {
+            project_id: projectUuid,
+            title: 'RLS Blocked Risk',
+            probability: RiskProbability.LOW,
+            impact: RiskImpact.LOW,
+          },
+          token,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+
+      // Verify service-role client was NEVER invoked as a bypass
+      expect(serviceRoleSupabaseMock.from).not.toHaveBeenCalled();
+    });
+
+    it('should prevent cross-project substitution on risk update', async () => {
+      const otherProjectUuid = '99999999-9999-4999-a999-999999999999';
+      vi.spyOn(service, 'findOne').mockResolvedValue({
+        id: validUuid,
+        project_id: projectUuid,
+        probability: RiskProbability.LOW,
+        impact: RiskImpact.LOW,
+      } as any);
+
+      await expect(
+        service.update(validUuid, {
+          project_id: otherProjectUuid,
+        } as any),
+      ).rejects.toThrow('Cannot change the project of an existing risk');
+    });
+
+    it('should reject risk update and deletion for VIEWER role', async () => {
+      const viewerToken = makeJwt({ sub: 'viewer-user', role: 'VIEWER' });
+      vi.spyOn(service, 'findOne').mockResolvedValue({
+        id: validUuid,
+        project_id: projectUuid,
+        probability: RiskProbability.LOW,
+        impact: RiskImpact.LOW,
+      } as any);
+
+      await expect(
+        service.update(validUuid, { title: 'Updated Risk' }, viewerToken),
+      ).rejects.toThrow('Access Denied: Viewers cannot modify risks');
+
+      await expect(service.remove(validUuid, viewerToken)).rejects.toThrow(
+        'Access Denied: Viewers cannot delete risks',
+      );
     });
   });
 });

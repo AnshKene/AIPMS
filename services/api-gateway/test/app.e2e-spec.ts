@@ -442,6 +442,7 @@ describe('API Gateway (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post('/api/ai/projects/p-1/health-summary')
+        .set('Authorization', 'Bearer bearer-token')
         .expect(503);
 
       expect(response.body.statusCode).toBe(503);
