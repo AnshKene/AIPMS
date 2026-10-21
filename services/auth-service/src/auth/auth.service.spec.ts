@@ -163,6 +163,38 @@ describe('AuthService', () => {
 
       expect(result.user.role).toBe(Role.TEAM_MEMBER);
     });
+
+    it('should prevent self-assigning ADMIN using submitted role or metadata during registration', async () => {
+      const mockSignUp = vi.fn().mockResolvedValue({
+        data: {
+          user: {
+            id: 'user-malicious-101',
+            email: 'malicious@example.com',
+            user_metadata: { name: 'Malicious User', role: 'ADMIN' },
+          },
+        },
+        error: null,
+      });
+      (service as any).supabase = {
+        auth: { signUp: mockSignUp },
+      };
+
+      const result = await service.register({
+        email: 'malicious@example.com',
+        password: 'password123',
+        name: 'Malicious User',
+        role: 'ADMIN',
+      } as any);
+
+      expect(mockSignUp).toHaveBeenCalledWith({
+        email: 'malicious@example.com',
+        password: 'password123',
+        options: {
+          data: { name: 'Malicious User' },
+        },
+      });
+      expect(result.user.role).toBe(Role.TEAM_MEMBER);
+    });
   });
 
   describe('login', () => {
@@ -342,6 +374,53 @@ describe('AuthService', () => {
         UnauthorizedException,
       );
     });
+
+    it('should accurately recognize designated administrator Ansh from trusted app_metadata', async () => {
+      const mockGetUser = vi.fn().mockResolvedValue({
+        data: {
+          user: {
+            id: AuthService.DESIGNATED_ADMIN_ID,
+            email: AuthService.DESIGNATED_ADMIN_EMAIL,
+            user_metadata: { name: 'Ansh' },
+            app_metadata: { role: Role.ADMIN },
+            created_at: '2026-10-21T00:00:00.000Z',
+          },
+        },
+        error: null,
+      });
+      (service as any).supabase = {
+        auth: { getUser: mockGetUser },
+      };
+
+      const result = await service.getCurrentUser('ansh-admin-token');
+
+      expect(result.id).toBe(AuthService.DESIGNATED_ADMIN_ID);
+      expect(result.email).toBe(AuthService.DESIGNATED_ADMIN_EMAIL);
+      expect(result.name).toBe('Ansh');
+      expect(result.role).toBe(Role.ADMIN);
+    });
+
+    it('should fail safe to TEAM_MEMBER if an unauthorized user claims ADMIN in app_metadata', async () => {
+      const mockGetUser = vi.fn().mockResolvedValue({
+        data: {
+          user: {
+            id: 'unauthorized-user-888',
+            email: 'imposter@example.com',
+            user_metadata: { name: 'Imposter' },
+            app_metadata: { role: Role.ADMIN },
+            created_at: '2026-10-21T00:00:00.000Z',
+          },
+        },
+        error: null,
+      });
+      (service as any).supabase = {
+        auth: { getUser: mockGetUser },
+      };
+
+      const result = await service.getCurrentUser('imposter-token');
+
+      expect(result.role).toBe(Role.TEAM_MEMBER);
+    });
   });
 
   describe('logout', () => {
@@ -380,23 +459,19 @@ describe('AuthService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('should prevent demoting the last active administrator', async () => {
-      // admin-user-001 is the only initial ADMIN
+    it('should reject attempts to promote another account to ADMIN', async () => {
       await expect(
-        service.updateUserRole('admin-user-001', Role.TEAM_MEMBER),
-      ).rejects.toThrow('Cannot demote the last active administrator');
+        service.updateUserRole('member-user-003', Role.ADMIN),
+      ).rejects.toThrow('Only the designated system administrator');
     });
 
-    it('should allow demoting an admin if multiple active administrators exist', async () => {
-      // Promote member-user-003 to ADMIN first
-      await service.updateUserRole('member-user-003', Role.ADMIN);
-
-      // Now demoting admin-user-001 should succeed since member-user-003 is also an ADMIN
-      const demoted = await service.updateUserRole('admin-user-001', Role.PROJECT_MANAGER);
-      expect(demoted.role).toBe(Role.PROJECT_MANAGER);
+    it('should prevent demoting or modifying the designated administrator', async () => {
+      await expect(
+        service.updateUserRole(AuthService.DESIGNATED_ADMIN_ID, Role.PROJECT_MANAGER),
+      ).rejects.toThrow('The designated system administrator account cannot be modified or demoted');
     });
 
-    it('should persist role changes durably to Supabase app_metadata via admin client', async () => {
+    it('should persist legitimate role changes durably to Supabase app_metadata via admin client', async () => {
       const mockUpdateUserById = vi.fn().mockResolvedValue({ error: null });
       (service as any).adminSupabase = {
         auth: {
@@ -425,9 +500,9 @@ describe('AuthService', () => {
         },
       };
 
-      // Attempting to promote member-user-003 to ADMIN when DB write fails
+      // Attempting to update member-user-003 to PROJECT_MANAGER when DB write fails
       await expect(
-        service.updateUserRole('member-user-003', Role.ADMIN),
+        service.updateUserRole('member-user-003', Role.PROJECT_MANAGER),
       ).rejects.toThrow(InternalServerErrorException);
 
       // Ensure permissions were not silently granted
@@ -533,7 +608,7 @@ describe('AuthService', () => {
       expect(result.role).toBe(Role.VIEWER);
     });
 
-    it('should survive service restart and retrieve role from persistent app_metadata', async () => {
+    it('should survive service restart and retrieve designated admin role from persistent app_metadata', async () => {
       // Simulate a brand new service instance (restart / separate replica) without prior in-memory state
       const module: TestingModule = await Test.createTestingModule({
         providers: [
@@ -554,9 +629,9 @@ describe('AuthService', () => {
       const mockGetUser = vi.fn().mockResolvedValue({
         data: {
           user: {
-            id: 'new-replica-user',
-            email: 'replica-admin@example.com',
-            user_metadata: { name: 'Replica User' },
+            id: AuthService.DESIGNATED_ADMIN_ID,
+            email: AuthService.DESIGNATED_ADMIN_EMAIL,
+            user_metadata: { name: 'Ansh' },
             app_metadata: { role: Role.ADMIN }, // Persisted in Supabase
             created_at: '2026-09-25T20:00:00.000Z',
           },
@@ -569,7 +644,46 @@ describe('AuthService', () => {
 
       const result = await restartedService.getCurrentUser('replica-token');
       expect(result.role).toBe(Role.ADMIN);
-      expect(result.id).toBe('new-replica-user');
+      expect(result.id).toBe(AuthService.DESIGNATED_ADMIN_ID);
+      expect(result.email).toBe(AuthService.DESIGNATED_ADMIN_EMAIL);
+    });
+
+    it('should survive service restart and retrieve persistent PROJECT_MANAGER role from app_metadata', async () => {
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          AuthService,
+          {
+            provide: ConfigService,
+            useValue: mockConfigService,
+          },
+          {
+            provide: AuditService,
+            useValue: mockAuditService,
+          },
+        ],
+      }).compile();
+
+      const restartedService = module.get<AuthService>(AuthService);
+
+      const mockGetUser = vi.fn().mockResolvedValue({
+        data: {
+          user: {
+            id: 'persisted-pm-user',
+            email: 'pm@example.com',
+            user_metadata: { name: 'PM User' },
+            app_metadata: { role: Role.PROJECT_MANAGER },
+            created_at: '2026-09-25T20:00:00.000Z',
+          },
+        },
+        error: null,
+      });
+      (restartedService as any).supabase = {
+        auth: { getUser: mockGetUser },
+      };
+
+      const result = await restartedService.getCurrentUser('pm-replica-token');
+      expect(result.role).toBe(Role.PROJECT_MANAGER);
+      expect(result.id).toBe('persisted-pm-user');
     });
 
     it('should synchronize durable user roles across replicas from Supabase admin listUsers', async () => {
@@ -613,6 +727,68 @@ describe('AuthService', () => {
       const syncedUser = allUsers.find((u) => u.id === 'replica-persisted-pm');
       expect(syncedUser).toBeDefined();
       expect(syncedUser?.role).toBe(Role.PROJECT_MANAGER);
+    });
+
+    it('should sanitize impostor ADMIN claim in listUsers response and internal cache', async () => {
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          AuthService,
+          {
+            provide: ConfigService,
+            useValue: mockConfigService,
+          },
+          {
+            provide: AuditService,
+            useValue: mockAuditService,
+          },
+        ],
+      }).compile();
+
+      const serviceInstance = module.get<AuthService>(AuthService);
+      (serviceInstance as any).adminSupabase = {
+        auth: {
+          admin: {
+            listUsers: vi.fn().mockResolvedValue({
+              data: {
+                users: [
+                  {
+                    id: 'imposter-user-123',
+                    email: 'imposter@aipms.com',
+                    user_metadata: { name: 'Imposter User' },
+                    app_metadata: { role: Role.ADMIN },
+                    created_at: new Date().toISOString(),
+                  },
+                  {
+                    id: AuthService.DESIGNATED_ADMIN_ID,
+                    email: AuthService.DESIGNATED_ADMIN_EMAIL,
+                    user_metadata: { name: 'Ansh' },
+                    app_metadata: { role: Role.ADMIN },
+                    created_at: new Date().toISOString(),
+                  },
+                ],
+              },
+              error: null,
+            }),
+          },
+        },
+      };
+
+      const allUsers = await serviceInstance.listUsers();
+
+      // Verify impostor role in list response is sanitized down to TEAM_MEMBER
+      const imposterInList = allUsers.find((u) => u.id === 'imposter-user-123');
+      expect(imposterInList).toBeDefined();
+      expect(imposterInList?.role).toBe(Role.TEAM_MEMBER);
+
+      // Verify impostor role in internal usersMap cache is also sanitized down to TEAM_MEMBER
+      const cachedImposter = (serviceInstance as any).usersMap.get('imposter-user-123');
+      expect(cachedImposter).toBeDefined();
+      expect(cachedImposter.role).toBe(Role.TEAM_MEMBER);
+
+      // Verify designated administrator retains ADMIN in list response and cache
+      const designatedInList = allUsers.find((u) => u.id === AuthService.DESIGNATED_ADMIN_ID);
+      expect(designatedInList).toBeDefined();
+      expect(designatedInList?.role).toBe(Role.ADMIN);
     });
   });
 });

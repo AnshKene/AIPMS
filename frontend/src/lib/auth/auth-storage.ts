@@ -6,6 +6,23 @@
 
 export type Role = 'ADMIN' | 'PROJECT_MANAGER' | 'TEAM_MEMBER' | 'VIEWER';
 
+export const DESIGNATED_ADMIN_ID = '66544acc-4e3d-4b3b-b3f3-44971c6a9347';
+export const DESIGNATED_ADMIN_EMAIL = 'admin.ansh@aipms.com';
+
+/**
+ * Platform roles that can be assigned through standard role management.
+ * The global ADMIN role is strictly reserved for the designated administrator.
+ */
+export const ASSIGNABLE_ROLES: Role[] = ['PROJECT_MANAGER', 'TEAM_MEMBER', 'VIEWER'];
+
+export function isDesignatedAdmin(user?: { id?: string; email?: string } | null): boolean {
+  if (!user) return false;
+  return (
+    user.id === DESIGNATED_ADMIN_ID ||
+    (user.email ?? '').toLowerCase() === DESIGNATED_ADMIN_EMAIL.toLowerCase()
+  );
+}
+
 export interface AuthUser {
   id: string;
   email: string;
