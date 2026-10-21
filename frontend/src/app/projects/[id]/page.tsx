@@ -26,12 +26,14 @@ import {
   Users,
   ChevronRight,
   ExternalLink,
+  UserCheck,
 } from 'lucide-react';
 import {
   getProject,
   updateProject,
   archiveProject,
   unarchiveProject,
+  transferProjectOwnership,
   type Project,
   type UpdateProjectPayload,
 } from '@/lib/api/projects';
@@ -209,6 +211,128 @@ function UnarchiveButton({
   );
 }
 
+// ─── Transfer Ownership Button Component ─────────────────────────────────────
+
+function TransferOwnershipButton({
+  projectId,
+  projectName,
+  currentOwnerId,
+  disabled,
+  onTransferred,
+}: {
+  projectId: string;
+  projectName: string;
+  currentOwnerId: string;
+  disabled: boolean;
+  onTransferred: (project: Project) => void;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const [newOwnerId, setNewOwnerId] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+  async function handleTransfer() {
+    const trimmed = newOwnerId.trim();
+    if (!trimmed) {
+      setError('New owner user UUID is required.');
+      return;
+    }
+    if (!UUID_REGEX.test(trimmed)) {
+      setError('Please enter a valid UUID format (e.g. xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx).');
+      return;
+    }
+    if (trimmed === currentOwnerId) {
+      setError('The specified user is already the current project owner.');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await transferProjectOwnership(projectId, { newOwnerId: trimmed });
+      onTransferred(result);
+      setOpen(false);
+      setNewOwnerId('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to transfer project ownership.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <Button
+        id="transfer-ownership-btn"
+        variant="outline"
+        size="sm"
+        disabled={disabled}
+        onClick={() => {
+          setOpen(true);
+          setError(null);
+          setNewOwnerId('');
+        }}
+        className="gap-1.5 border-purple-300 text-purple-700 hover:bg-purple-50 dark:border-purple-800/80 dark:text-purple-400 dark:hover:bg-purple-950/30"
+      >
+        <UserCheck className="h-3.5 w-3.5" />
+        Transfer Ownership
+      </Button>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2.5 p-3.5 rounded-xl border border-purple-200 dark:border-purple-900 bg-purple-50/50 dark:bg-purple-950/30 text-left min-w-[280px]">
+      <div>
+        <p className="text-xs font-semibold text-purple-900 dark:text-purple-200">
+          Transfer &ldquo;{projectName}&rdquo; Ownership
+        </p>
+        <p className="text-[11px] text-purple-700 dark:text-purple-300 mt-0.5 leading-relaxed">
+          Specify the Supabase user UUID who will become the new Project Owner.
+        </p>
+      </div>
+
+      <input
+        type="text"
+        placeholder="New owner user UUID"
+        value={newOwnerId}
+        onChange={(e) => setNewOwnerId(e.target.value)}
+        disabled={loading}
+        className="h-8 px-2.5 text-xs font-mono rounded-md border border-purple-300 dark:border-purple-700 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-600"
+      />
+
+      {error && <p className="text-xs text-red-600">{error}</p>}
+
+      <div className="flex gap-2">
+        <Button
+          id="confirm-transfer-ownership-btn"
+          size="sm"
+          disabled={loading}
+          onClick={handleTransfer}
+          className="gap-1.5 h-8 text-xs bg-purple-600 hover:bg-purple-700 text-white"
+        >
+          {loading && <Loader2 className="h-3 w-3 animate-spin" />}
+          Confirm Transfer
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={loading}
+          onClick={() => {
+            setOpen(false);
+            setError(null);
+            setNewOwnerId('');
+          }}
+          className="h-8 text-xs"
+        >
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Project Detail Page ───────────────────────────────────────────────
 
 export default function ProjectDetailPage() {
@@ -216,9 +340,12 @@ export default function ProjectDetailPage() {
   const id = params.id;
   const { user } = useAuth();
 
-  const canManageProject = user?.role === 'ADMIN' || user?.role === 'PROJECT_MANAGER';
-
   const [project, setProject] = React.useState<Project | null>(null);
+
+  const isOwner = Boolean(user && project && project.ownerId === user.id);
+  const isSystemAdmin = user?.role === 'ADMIN';
+  const canManageProject = isSystemAdmin || isOwner;
+  const canTransferOwnership = !project?.status || project.status !== 'ARCHIVED' ? (isSystemAdmin || isOwner) : false;
   const [tasks, setTasks] = React.useState<Task[]>([]);
   const [sprints, setSprints] = React.useState<Sprint[]>([]);
   const [risks, setRisks] = React.useState<Risk[]>([]);
@@ -415,8 +542,8 @@ export default function ProjectDetailPage() {
           </div>
 
           {/* Action Toolbar (RBAC protected) */}
-          {canManageProject && (
-            <div className="flex items-center gap-2 shrink-0">
+          {canManageProject ? (
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
               {!isArchived && (
                 <ProjectForm
                   mode="edit"
@@ -429,6 +556,16 @@ export default function ProjectDetailPage() {
                   }
                   onSubmit={(payload) => updateProject(project.id, payload as UpdateProjectPayload)}
                   onSuccess={handleUpdated}
+                />
+              )}
+
+              {canTransferOwnership && (
+                <TransferOwnershipButton
+                  projectId={project.id}
+                  projectName={project.name}
+                  currentOwnerId={project.ownerId}
+                  disabled={isArchived}
+                  onTransferred={handleUpdated}
                 />
               )}
 
@@ -446,6 +583,12 @@ export default function ProjectDetailPage() {
                   onUnarchived={handleArchived}
                 />
               )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 font-medium">
+                Managed by Project Owner
+              </span>
             </div>
           )}
         </div>
@@ -513,11 +656,16 @@ export default function ProjectDetailPage() {
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400">
                 <User className="h-4 w-4" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Project Owner</p>
-                <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 font-mono mt-0.5 truncate max-w-[120px]">
+                <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 font-mono mt-0.5 truncate max-w-[140px]">
                   {project.ownerId}
                 </p>
+                {isOwner && (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 mt-1">
+                    You (Project Owner)
+                  </span>
+                )}
               </div>
             </div>
             <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-2">

@@ -2,7 +2,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ProjectStatusBadge } from './ProjectStatusBadge';
-import { CalendarDays, ArrowUpRight, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { CalendarDays, ArrowUpRight, CheckCircle2, AlertTriangle, User } from 'lucide-react';
 import { formatProjectName } from '@/lib/utils';
 import type { Project } from '@/lib/api/projects';
 import type { Task } from '@/lib/api/tasks';
@@ -14,6 +14,7 @@ interface ProjectCardProps {
   taskSummary?: Task[];
   risks?: Risk[];
   riskCount?: number;
+  currentUserId?: string;
 }
 
 function formatDate(iso: string | null): string {
@@ -31,8 +32,10 @@ export function ProjectCard({
   taskSummary,
   risks = [],
   riskCount,
+  currentUserId,
 }: ProjectCardProps) {
   const isArchived = project.status === 'ARCHIVED';
+  const isCurrentUserOwner = Boolean(currentUserId && project.ownerId === currentUserId);
 
   // Compute tasks for this project
   const projectTasks = React.useMemo(() => {
@@ -107,8 +110,30 @@ export function ProjectCard({
           </div>
 
           {/* Footer Metadata */}
-          <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800/80 text-[11px] text-slate-400">
-            <div className="flex items-center gap-1.5">
+          <div className="flex flex-col gap-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800/80 text-[11px] text-slate-400">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <User className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                <span className="truncate">
+                  {isCurrentUserOwner ? (
+                    <span className="font-semibold text-blue-600 dark:text-blue-400">You (Owner)</span>
+                  ) : (
+                    <span className="text-slate-500 dark:text-slate-400 font-mono text-[10px]">
+                      Owner: {project.ownerId ? `${project.ownerId.slice(0, 8)}...` : 'Unassigned'}
+                    </span>
+                  )}
+                </span>
+              </div>
+
+              {openRiskCount > 0 && (
+                <span className="flex items-center gap-1 font-semibold text-rose-500 shrink-0">
+                  <AlertTriangle className="h-3 w-3" />
+                  {openRiskCount} risk{openRiskCount === 1 ? '' : 's'}
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1.5 text-slate-400 dark:text-slate-500">
               <CalendarDays className="h-3.5 w-3.5 shrink-0" />
               <span>
                 {formatDate(project.startDate)}
@@ -116,13 +141,6 @@ export function ProjectCard({
                 {formatDate(project.endDate)}
               </span>
             </div>
-
-            {openRiskCount > 0 && (
-              <span className="flex items-center gap-1 font-semibold text-rose-500">
-                <AlertTriangle className="h-3 w-3" />
-                {openRiskCount} risk{openRiskCount === 1 ? '' : 's'}
-              </span>
-            )}
           </div>
         </CardContent>
       </Card>
