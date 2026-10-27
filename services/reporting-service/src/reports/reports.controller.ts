@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  UnauthorizedException,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
@@ -19,6 +20,19 @@ import { ReportsService } from './reports.service.js';
 @Controller('reports')
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
+
+  private requireAuthHeader(authHeader?: string): string {
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      throw new UnauthorizedException(
+        'Authorization header with Bearer token is required',
+      );
+    }
+    const token = authHeader.split(' ')[1]?.trim();
+    if (!token) {
+      throw new UnauthorizedException('Bearer token is missing or empty');
+    }
+    return authHeader;
+  }
 
   // ─── Project Overview ────────────────────────────────────────────────────────
 
@@ -36,7 +50,8 @@ export class ReportsController {
     @Param('projectId') projectId: string,
     @Headers('authorization') authHeader?: string,
   ) {
-    return this.reportsService.getProjectOverview(projectId, authHeader);
+    const validAuth = this.requireAuthHeader(authHeader);
+    return this.reportsService.getProjectOverview(projectId, validAuth);
   }
 
   // ─── Tasks Report ────────────────────────────────────────────────────────────
@@ -55,7 +70,8 @@ export class ReportsController {
     @Param('projectId') projectId: string,
     @Headers('authorization') authHeader?: string,
   ) {
-    return this.reportsService.getTasksReport(projectId, authHeader);
+    const validAuth = this.requireAuthHeader(authHeader);
+    return this.reportsService.getTasksReport(projectId, validAuth);
   }
 
   // ─── Sprints Report ──────────────────────────────────────────────────────────
@@ -74,7 +90,8 @@ export class ReportsController {
     @Param('projectId') projectId: string,
     @Headers('authorization') authHeader?: string,
   ) {
-    return this.reportsService.getSprintsReport(projectId, authHeader);
+    const validAuth = this.requireAuthHeader(authHeader);
+    return this.reportsService.getSprintsReport(projectId, validAuth);
   }
 
   // ─── Risks Report ────────────────────────────────────────────────────────────
@@ -93,6 +110,7 @@ export class ReportsController {
     @Param('projectId') projectId: string,
     @Headers('authorization') authHeader?: string,
   ) {
-    return this.reportsService.getRisksReport(projectId, authHeader);
+    const validAuth = this.requireAuthHeader(authHeader);
+    return this.reportsService.getRisksReport(projectId, validAuth);
   }
 }

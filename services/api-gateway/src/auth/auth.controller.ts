@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   HttpCode,
@@ -120,6 +121,14 @@ export class AuthController {
     return this.authService.listUsers(authHeader);
   }
 
+  @Get('directory')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List directory user profiles for assignment selectors (Authenticated users)' })
+  async getDirectory(@Headers('authorization') authHeader?: string) {
+    return this.authService.getDirectory(authHeader);
+  }
+
   @Patch('users/:id/role')
   @Roles(Role.ADMIN)
   @HttpCode(HttpStatus.OK)
@@ -131,6 +140,52 @@ export class AuthController {
     @Headers('authorization') authHeader?: string,
   ) {
     return this.authService.updateUserRole(id, dto.role, authHeader);
+  }
+
+  @Post('users/:id/deactivate')
+  @Roles(Role.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Forward deactivate user request (ADMIN only)' })
+  @ApiResponse({ status: 200, description: 'User account deactivated successfully' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Only administrators can deactivate users' })
+  @ApiResponse({ status: 409, description: 'Conflict - User is already deactivated or owns projects' })
+  async deactivateUser(
+    @Param('id') id: string,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return this.authService.deactivateUser(id, authHeader);
+  }
+
+  @Post('users/:id/reactivate')
+  @Roles(Role.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Forward reactivate user request (ADMIN only)' })
+  @ApiResponse({ status: 200, description: 'User account reactivated successfully' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Only administrators can reactivate users' })
+  @ApiResponse({ status: 409, description: 'Conflict - User is already active' })
+  async reactivateUser(
+    @Param('id') id: string,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return this.authService.reactivateUser(id, authHeader);
+  }
+
+  @Delete('users/:id')
+  @Roles(Role.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Forward permanently delete user request (ADMIN only)' })
+  @ApiResponse({ status: 200, description: 'User account permanently deleted successfully' })
+  @ApiResponse({ status: 400, description: 'Bad Request - Account must be deactivated before permanent deletion' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Only administrators can delete users' })
+  @ApiResponse({ status: 409, description: 'Conflict - User owns projects that must be transferred first' })
+  async deleteUser(
+    @Param('id') id: string,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    return this.authService.deleteUser(id, authHeader);
   }
 
   @Post('logout')

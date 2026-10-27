@@ -159,6 +159,62 @@ export class AuditService {
     page?: number;
     limit?: number;
   }) {
+    // Attempt durable database query if Supabase client available
+    if (this.supabase) {
+      try {
+        let query = this.supabase
+          .from('audit_logs')
+          .select('*', { count: 'exact' });
+
+        if (options?.action) {
+          query = query.ilike('action', options.action);
+        }
+        if (options?.actorId) {
+          query = query.or(`actor_id.eq.${options.actorId},actor_email.ilike.${options.actorId}`);
+        }
+        if (options?.search) {
+          query = query.or(
+            `action.ilike.%${options.search}%,actor_email.ilike.%${options.search}%,target_resource.ilike.%${options.search}%`,
+          );
+        }
+
+        const page = Math.max(1, options?.page || 1);
+        const limit = Math.min(100, Math.max(1, options?.limit || 20));
+        const startIndex = (page - 1) * limit;
+
+        const { data, count, error } = await query
+          .order('created_at', { ascending: false })
+          .range(startIndex, startIndex + limit - 1);
+
+        if (!error && data && data.length > 0) {
+          const total = count ?? data.length;
+          return {
+            items: data.map((d: any) => ({
+              id: d.id,
+              actorId: d.actor_id,
+              actorEmail: d.actor_email,
+              action: d.action,
+              targetResource: d.target_resource,
+              previousValue: d.previous_value,
+              newValue: d.new_value,
+              outcome: d.outcome,
+              context: d.context,
+              timestamp: d.created_at,
+            })),
+            meta: {
+              total,
+              page,
+              limit,
+              totalPages: Math.ceil(total / limit) || 1,
+            },
+          };
+        }
+      } catch (err) {
+        this.logger.warn(`Could not query audit logs from Supabase: ${(err as Error).message}`);
+      }
+    }
+
+    // Fallback to in-memory log
     let logs = [...this.auditMemoryLog];
 
     if (options?.action) {

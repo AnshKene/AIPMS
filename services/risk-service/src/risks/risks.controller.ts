@@ -10,6 +10,7 @@ import {
   Patch,
   Post,
   Query,
+  UnauthorizedException,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
@@ -30,6 +31,17 @@ import { QueryRiskDto } from './dto/query-risk.dto.js';
 export class RisksController {
   constructor(private readonly risksService: RisksService) {}
 
+  private requireAuthHeader(authHeader?: string): string {
+    if (!authHeader || !authHeader.trim().toLowerCase().startsWith('bearer ')) {
+      throw new UnauthorizedException('Authentication token required');
+    }
+    const token = authHeader.split(' ')[1]?.trim();
+    if (!token) {
+      throw new UnauthorizedException('Authentication token required');
+    }
+    return authHeader;
+  }
+
   @Post()
   @ApiOperation({ summary: 'Create a new risk (risk_score calculated automatically)' })
   @ApiCreatedResponse({ description: 'Risk created successfully' })
@@ -38,7 +50,8 @@ export class RisksController {
     @Body() dto: CreateRiskDto,
     @Headers('authorization') authHeader?: string,
   ) {
-    return this.risksService.create(dto, authHeader);
+    const validAuth = this.requireAuthHeader(authHeader);
+    return this.risksService.create(dto, validAuth);
   }
 
   @Get()
@@ -49,7 +62,8 @@ export class RisksController {
     @Query() query: QueryRiskDto,
     @Headers('authorization') authHeader?: string,
   ) {
-    return this.risksService.findAll(query, authHeader);
+    const validAuth = this.requireAuthHeader(authHeader);
+    return this.risksService.findAll(query, validAuth);
   }
 
   @Get(':id')
@@ -62,7 +76,8 @@ export class RisksController {
     @Param('id') id: string,
     @Headers('authorization') authHeader?: string,
   ) {
-    return this.risksService.findOne(id, authHeader);
+    const validAuth = this.requireAuthHeader(authHeader);
+    return this.risksService.findOne(id, validAuth);
   }
 
   @Patch(':id')
@@ -76,7 +91,8 @@ export class RisksController {
     @Body() dto: UpdateRiskDto,
     @Headers('authorization') authHeader?: string,
   ) {
-    return this.risksService.update(id, dto, authHeader);
+    const validAuth = this.requireAuthHeader(authHeader);
+    return this.risksService.update(id, dto, validAuth);
   }
 
   @Delete(':id')
@@ -90,6 +106,7 @@ export class RisksController {
     @Param('id') id: string,
     @Headers('authorization') authHeader?: string,
   ) {
-    return this.risksService.remove(id, authHeader);
+    const validAuth = this.requireAuthHeader(authHeader);
+    return this.risksService.remove(id, validAuth);
   }
 }

@@ -13,6 +13,8 @@ import { TaskDetail } from '@/components/tasks/task-detail';
 import { TasksSkeleton } from '@/components/tasks/TasksSkeleton';
 import { ErrorState } from '@/components/ui/error-state';
 import { EmptyState, FilterEmptyState } from '@/components/ui/empty-state';
+import { Avatar } from '@/components/ui/avatar';
+import { userDirectory } from '@/lib/auth/user-directory';
 import { useAuth } from '@/lib/auth/auth-context';
 import {
   listTasks,
@@ -84,16 +86,14 @@ function getDueDateStatus(dueDateStr: string | null | undefined): { label: strin
 }
 
 function getAssigneeDisplay(
-  id: string | null | undefined,
-  currentUserName?: string | null
+  id: string | null | undefined
 ): { name: string; initials: string; isAssigned: boolean } {
   if (!id) return { name: 'Unassigned', initials: '—', isAssigned: false };
-  if (id.startsWith('00000000')) {
-    return { name: currentUserName || 'System Admin', initials: 'SA', isAssigned: true };
-  }
+  const profile = userDirectory.getUser(id);
+  const initials = userDirectory.getInitials(profile.name || profile.email);
   return {
-    name: `User #${id.slice(0, 4)}`,
-    initials: id.slice(0, 2).toUpperCase(),
+    name: profile.name,
+    initials,
     isAssigned: true,
   };
 }
@@ -151,22 +151,44 @@ function BoardColumn({
                   <TaskPriorityBadge priority={task.priority} />
                 </div>
 
-                {task.dueDate && (
-                  <div className="pt-1.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-[10px] text-slate-400">
-                    <span className="flex items-center gap-1">
-                      <CalendarDays className="h-3 w-3" />
-                      {new Date(task.dueDate).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                      })}
-                    </span>
-                    {getDueDateStatus(task.dueDate) && (
-                      <span className={getDueDateStatus(task.dueDate)?.color}>
-                        {getDueDateStatus(task.dueDate)?.label}
+                {/* Bottom Row: Due Date & Assignee Avatar */}
+                <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-[10px] text-slate-400">
+                  <div>
+                    {task.dueDate ? (
+                      <span className="flex items-center gap-1 font-medium">
+                        <CalendarDays className="h-3 w-3 text-slate-400" />
+                        <span className="text-slate-600 dark:text-slate-300">
+                          {new Date(task.dueDate).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                          })}
+                        </span>
+                        {getDueDateStatus(task.dueDate) && (
+                          <span className={cn('text-[8px] px-1 py-0.2 rounded font-bold uppercase ml-0.5', getDueDateStatus(task.dueDate)?.color)}>
+                            {getDueDateStatus(task.dueDate)?.label}
+                          </span>
+                        )}
                       </span>
+                    ) : (
+                      <span className="italic text-slate-400 text-[10px]">No date</span>
                     )}
                   </div>
-                )}
+
+                  {task.assigneeId ? (
+                    <div className="flex items-center gap-1" title={userDirectory.getUser(task.assigneeId).name}>
+                      <Avatar
+                        fallback={userDirectory.getInitials(task.assigneeId)}
+                        size="sm"
+                        className="h-4.5 w-4.5 text-[8px]"
+                      />
+                      <span className="font-semibold text-slate-600 dark:text-slate-300 text-[10px] max-w-[80px] truncate">
+                        {userDirectory.getUser(task.assigneeId).name}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="italic text-slate-400 text-[10px]">Unassigned</span>
+                  )}
+                </div>
               </div>
             }
           />
@@ -184,7 +206,7 @@ function TasksContent() {
   const sprintIdParam = searchParams.get('sprintId') || '';
 
   const { user } = useAuth();
-  const canCreateTask = user?.role === 'ADMIN' || user?.role === 'PROJECT_MANAGER' || user?.role === 'TEAM_MEMBER';
+  const canCreateTask = user?.role === 'ADMIN' || user?.role === 'PROJECT_OWNER' || user?.role === 'PROJECT_MANAGER';
 
   // Scope state
   const [activeProject, setActiveProject] = React.useState<Project | null>(null);
@@ -284,6 +306,12 @@ function TasksContent() {
     };
   }, [page, statusFilter, priorityFilter, projectIdParam, sprintIdParam, refreshKey]);
 
+  const directoryVersion = React.useSyncExternalStore(
+    (cb) => userDirectory.subscribe(cb),
+    () => userDirectory.getVersion(),
+    () => 0,
+  );
+
   // Client-side search and sorting
   const visibleTasks = React.useMemo(() => {
     let result = [...tasks];
@@ -296,7 +324,10 @@ function TasksContent() {
           t.title.toLowerCase().includes(q) ||
           (t.description && t.description.toLowerCase().includes(q)) ||
           t.id.toLowerCase().includes(q) ||
-          (t.assigneeId && t.assigneeId.toLowerCase().includes(q))
+          (t.assigneeId && (
+            t.assigneeId.toLowerCase().includes(q) ||
+            userDirectory.getUser(t.assigneeId).name.toLowerCase().includes(q)
+          ))
       );
     }
 
@@ -325,7 +356,7 @@ function TasksContent() {
     });
 
     return result;
-  }, [tasks, search, sortBy]);
+  }, [tasks, search, sortBy, directoryVersion]);
 
   // Group tasks by status for board view
   const tasksByStatus = React.useMemo(() => {
@@ -612,7 +643,7 @@ function TasksContent() {
               <div className="sm:hidden flex flex-col gap-3">
                 {visibleTasks.map((task) => {
                   const dueBadge = getDueDateStatus(task.dueDate);
-                  const assignee = getAssigneeDisplay(task.assigneeId, user?.name);
+                  const assignee = getAssigneeDisplay(task.assigneeId);
                   const priorityAccentColor =
                     task.priority === 'URGENT'
                       ? 'bg-rose-500'
@@ -733,7 +764,7 @@ function TasksContent() {
                 <div className="divide-y divide-slate-100 dark:divide-slate-800/70">
                   {visibleTasks.map((task) => {
                     const dueBadge = getDueDateStatus(task.dueDate);
-                    const assignee = getAssigneeDisplay(task.assigneeId, user?.name);
+                    const assignee = getAssigneeDisplay(task.assigneeId);
                     return (
                       <TaskDetail
                         key={task.id}

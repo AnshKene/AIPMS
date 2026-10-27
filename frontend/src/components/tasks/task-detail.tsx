@@ -9,6 +9,9 @@ import {
 } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import { Avatar } from '@/components/ui/avatar';
+import { RoleBadge } from '@/components/common/RoleBadge';
+import { UserSelector } from '@/components/common/UserSelector';
 import { TaskPriorityBadge } from './task-badges';
 import { TaskForm } from './task-form';
 import { TaskDependencies } from './task-dependencies';
@@ -21,6 +24,9 @@ import {
   type TaskStatus,
   TASK_STATUSES,
 } from '@/lib/api/tasks';
+import { getProject, type Project, listProjectMembers, type ProjectMember } from '@/lib/api/projects';
+import { getTeam, type Team } from '@/lib/api/teams';
+import { userDirectory } from '@/lib/auth/user-directory';
 import {
   Loader2,
   Pencil,
@@ -75,7 +81,7 @@ const STATUS_LABELS: Record<TaskStatus, string> = {
 };
 
 const SELECT_CLASS =
-  'flex h-8 rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2 py-1 text-xs font-semibold text-slate-800 dark:text-slate-200 shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 disabled:cursor-not-allowed disabled:opacity-50';
+  'flex h-8 rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2.5 py-1 text-xs font-semibold text-slate-800 dark:text-slate-200 shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer';
 
 function ConfirmDeleteDialog({
   onConfirm,
@@ -164,21 +170,35 @@ export function TaskDetail({
   onTaskDeleted,
 }: TaskDetailProps) {
   const { user } = useAuth();
-  const canManageTask = user?.role === 'ADMIN' || user?.role === 'PROJECT_MANAGER' || user?.role === 'TEAM_MEMBER';
-
   const [open, setOpen] = React.useState(false);
   const [task, setTask] = React.useState<Task | null>(null);
+  const [project, setProject] = React.useState<Project | null>(null);
+  const [team, setTeam] = React.useState<Team | null>(null);
+  const [projectMembers, setProjectMembers] = React.useState<ProjectMember[]>([]);
+
+  // RBAC checks
+  const isGlobalAdmin = user?.role === 'ADMIN';
+  const isProjectOwner = Boolean(user && project && project.ownerId === user.id);
+  const isAssignedPM = projectMembers.some(
+    (m) => m.userId === user?.id && m.role === 'PROJECT_MANAGER',
+  );
+  const canManageTask = isGlobalAdmin || isProjectOwner || isAssignedPM || user?.role === 'PROJECT_OWNER';
+  const isAssignedMember = Boolean(user && task && task.assigneeId === user.id);
+  const canUpdateStatus = canManageTask || isAssignedMember;
+
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
   const [statusUpdating, setStatusUpdating] = React.useState(false);
+  const [reassigning, setReassigning] = React.useState(false);
+  const [showReassignDropdown, setShowReassignDropdown] = React.useState(false);
 
   React.useEffect(() => {
     if (!open) return;
     let cancelled = false;
 
-    async function fetchTask() {
+    async function fetchTaskAndContext() {
       setLoading(true);
       setError(null);
       setTask(null);
@@ -186,6 +206,25 @@ export function TaskDetail({
         const t = await getTask(taskId);
         if (!cancelled) {
           setTask(t);
+
+          // Fetch associated project and team
+          if (t.projectId) {
+            const [pRes, mRes] = await Promise.allSettled([
+              getProject(t.projectId),
+              listProjectMembers(t.projectId),
+            ]);
+            if (!cancelled && pRes.status === 'fulfilled') setProject(pRes.value);
+            if (!cancelled && mRes.status === 'fulfilled') setProjectMembers(mRes.value);
+          }
+          if (t.teamId) {
+            getTeam(t.teamId)
+              .then((tm) => {
+                if (!cancelled) setTeam(tm);
+              })
+              .catch(() => {
+                // Ignore
+              });
+          }
         }
       } catch (err) {
         if (!cancelled) {
@@ -198,7 +237,7 @@ export function TaskDetail({
       }
     }
 
-    fetchTask();
+    fetchTaskAndContext();
     return () => {
       cancelled = true;
     };
@@ -212,10 +251,32 @@ export function TaskDetail({
       const updated = await updateTask(task.id, { status: newStatus });
       setTask(updated);
       onTaskUpdated?.(updated);
-    } catch {
-      // revert silently
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update task status.');
     } finally {
       setStatusUpdating(false);
+    }
+  }
+
+  const _directoryVersion = React.useSyncExternalStore(
+    (cb) => userDirectory.subscribe(cb),
+    () => userDirectory.getVersion(),
+    () => 0,
+  );
+
+  async function handleReassign(newAssigneeId: string) {
+    if (!task) return;
+    setReassigning(true);
+    try {
+      const updated = await updateTask(task.id, { assigneeId: newAssigneeId || undefined });
+      setTask(updated);
+      setShowReassignDropdown(false);
+      void userDirectory.fetchDirectory();
+      onTaskUpdated?.(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reassign task.');
+    } finally {
+      setReassigning(false);
     }
   }
 
@@ -241,27 +302,30 @@ export function TaskDetail({
   }
 
   const dueDateBadge = getDueDateStatus(task?.dueDate);
+  const assigneeProfile = task?.assigneeId ? userDirectory.getUser(task.assigneeId) : null;
 
   return (
     <>
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger asChild>{trigger}</SheetTrigger>
-        <SheetContent className="w-full max-w-lg overflow-y-auto bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+        <SheetContent className="w-full max-w-lg overflow-y-auto bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 p-0 flex flex-col">
           {loading && (
-            <div className="flex items-center justify-center py-20">
+            <div className="flex items-center justify-center py-24 flex-1">
               <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
             </div>
           )}
 
           {!loading && error && (
-            <div className="rounded-2xl border border-rose-200 dark:border-rose-900/50 bg-rose-50/50 dark:bg-rose-950/20 px-4 py-6 text-center space-y-2 mt-4">
-              <p className="text-sm font-semibold text-rose-800 dark:text-rose-400">Failed to load task</p>
-              <p className="text-xs text-rose-600 dark:text-rose-300">{error}</p>
+            <div className="p-6">
+              <div className="rounded-xl border border-rose-200 dark:border-rose-900/50 bg-rose-50/50 dark:bg-rose-950/20 px-4 py-4 text-center space-y-2">
+                <p className="text-xs font-semibold text-rose-800 dark:text-rose-400">Action Notice</p>
+                <p className="text-xs text-rose-600 dark:text-rose-300">{error}</p>
+              </div>
             </div>
           )}
 
           {!loading && task && (
-            <div className="space-y-5">
+            <div className="flex-1 p-6 space-y-5 overflow-y-auto">
               {/* Header */}
               <div className="space-y-3">
                 <div className="flex items-start justify-between gap-3">
@@ -284,11 +348,11 @@ export function TaskDetail({
                           <Button
                             variant="outline"
                             size="sm"
-                            className="gap-1.5 text-xs"
+                            className="gap-1.5 text-xs h-7"
                             id={`edit-task-${task.id}`}
                             aria-label="Edit task"
                           >
-                            <Pencil className="h-3.5 w-3.5" />
+                            <Pencil className="h-3 w-3" />
                             Edit
                           </Button>
                         }
@@ -298,12 +362,12 @@ export function TaskDetail({
                       <Button
                         variant="outline"
                         size="sm"
-                        className="gap-1.5 text-xs text-slate-700 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-200 dark:hover:border-rose-900"
+                        className="h-7 w-7 p-0 text-slate-400 hover:text-rose-600 hover:border-rose-200 dark:hover:border-rose-900"
                         onClick={() => setConfirmDelete(true)}
                         id={`delete-task-${task.id}`}
                         aria-label="Delete task"
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <Trash2 className="h-3 w-3" />
                       </Button>
                     </div>
                   )}
@@ -315,7 +379,7 @@ export function TaskDetail({
                     <select
                       value={task.status}
                       onChange={handleStatusChange}
-                      disabled={statusUpdating || !canManageTask}
+                      disabled={statusUpdating || !canUpdateStatus}
                       aria-label="Task status"
                       className={cn(SELECT_CLASS, 'w-auto')}
                     >
@@ -341,6 +405,72 @@ export function TaskDetail({
 
               <Separator className="bg-slate-100 dark:bg-slate-800" />
 
+              {/* Ownership & Assignee Card */}
+              <div className="p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    Assigned Ownership
+                  </span>
+                  {canManageTask && !showReassignDropdown && (
+                    <button
+                      type="button"
+                      onClick={() => setShowReassignDropdown(true)}
+                      className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                    >
+                      Reassign
+                    </button>
+                  )}
+                </div>
+
+                {showReassignDropdown ? (
+                  <div className="space-y-2 pt-1">
+                    <UserSelector
+                      value={task.assigneeId || ''}
+                      onChange={handleReassign}
+                      placeholder="Select new assignee..."
+                      disabled={reassigning}
+                    />
+                    <div className="flex justify-end">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setShowReassignDropdown(false)}
+                        className="h-6 text-[11px]"
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : assigneeProfile ? (
+                  <div className="flex items-center gap-2.5">
+                    <Avatar
+                      fallback={userDirectory.getInitials(assigneeProfile.name || assigneeProfile.email)}
+                      size="sm"
+                      className="h-7 w-7 text-[10px] shrink-0"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-slate-900 dark:text-slate-100 truncate">
+                        {assigneeProfile.name}
+                      </p>
+                      {assigneeProfile.email && (
+                        <p className="text-[10px] text-slate-400 truncate">
+                          {assigneeProfile.email}
+                        </p>
+                      )}
+                    </div>
+                    {assigneeProfile.role && (
+                      <RoleBadge role={assigneeProfile.role} size="sm" showIcon={false} />
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-slate-400 italic text-xs py-1">
+                    <User className="h-4 w-4" />
+                    <span>Unassigned work item</span>
+                  </div>
+                )}
+              </div>
+
               {/* Description */}
               <div className="space-y-1.5">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
@@ -359,13 +489,13 @@ export function TaskDetail({
 
               {/* Context Links & Fields */}
               <div className="grid gap-3 sm:grid-cols-2">
-                <DetailField icon={FolderKanban} label="Project Context">
+                <DetailField icon={FolderKanban} label="Project Workspace">
                   {task.projectId ? (
                     <Link
                       href={`/projects/${task.projectId}`}
                       className="text-xs font-semibold text-blue-600 hover:underline dark:text-blue-400 inline-flex items-center gap-1"
                     >
-                      View Project
+                      {project?.name || `Project #${task.projectId.slice(0, 6)}`}
                       <ExternalLink className="h-3 w-3" />
                     </Link>
                   ) : (
@@ -373,7 +503,7 @@ export function TaskDetail({
                   )}
                 </DetailField>
 
-                <DetailField icon={Zap} label="Sprint Context">
+                <DetailField icon={Zap} label="Sprint Iteration">
                   {task.sprintId ? (
                     <Link
                       href={`/sprints?projectId=${task.projectId}`}
@@ -387,20 +517,14 @@ export function TaskDetail({
                   )}
                 </DetailField>
 
-                <DetailField icon={User} label="Assignee">
-                  {task.assigneeId ? (
-                    <span className="font-mono text-xs text-slate-700 dark:text-slate-300">
-                      {task.assigneeId}
-                    </span>
-                  ) : (
-                    <span className="text-slate-400">Unassigned</span>
-                  )}
-                </DetailField>
-
                 <DetailField icon={Users} label="Team">
-                  {task.teamId ? (
-                    <span className="font-mono text-xs text-slate-700 dark:text-slate-300">
-                      {task.teamId}
+                  {team ? (
+                    <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                      {team.name}
+                    </span>
+                  ) : task.teamId ? (
+                    <span className="font-mono text-xs text-slate-500">
+                      Team #{task.teamId.slice(0, 6)}
                     </span>
                   ) : (
                     <span className="text-slate-400">No team assigned</span>

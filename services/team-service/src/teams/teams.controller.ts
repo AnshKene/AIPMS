@@ -10,6 +10,7 @@ import {
   Patch,
   Post,
   Query,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { TeamsService } from './teams.service.js';
@@ -25,6 +26,17 @@ import { QueryTeamMemberDto } from './dto/query-team-member.dto.js';
 export class TeamsController {
   constructor(private readonly teamsService: TeamsService) {}
 
+  private requireAuthHeader(authHeader?: string): string {
+    if (!authHeader || !authHeader.trim().toLowerCase().startsWith('bearer ')) {
+      throw new UnauthorizedException('Authentication token required');
+    }
+    const token = authHeader.split(' ')[1]?.trim();
+    if (!token) {
+      throw new UnauthorizedException('Authentication token required');
+    }
+    return authHeader;
+  }
+
   // --- TEAMS ENDPOINTS ---
 
   @Post()
@@ -39,9 +51,8 @@ export class TeamsController {
     @Body() createTeamDto: CreateTeamDto,
     @Headers('authorization') authHeader?: string,
   ) {
-    return authHeader
-      ? this.teamsService.createTeam(createTeamDto, authHeader)
-      : this.teamsService.createTeam(createTeamDto);
+    const validAuth = this.requireAuthHeader(authHeader);
+    return this.teamsService.createTeam(createTeamDto, validAuth);
   }
 
   @Get()
@@ -52,9 +63,8 @@ export class TeamsController {
     @Query() query: QueryTeamDto,
     @Headers('authorization') authHeader?: string,
   ) {
-    return authHeader
-      ? this.teamsService.findAllTeams(query, authHeader)
-      : this.teamsService.findAllTeams(query);
+    const validAuth = this.requireAuthHeader(authHeader);
+    return this.teamsService.findAllTeams(query, validAuth);
   }
 
   @Get(':id')
@@ -68,9 +78,8 @@ export class TeamsController {
     @Param('id') id: string,
     @Headers('authorization') authHeader?: string,
   ) {
-    return authHeader
-      ? this.teamsService.findOneTeam(id, authHeader)
-      : this.teamsService.findOneTeam(id);
+    const validAuth = this.requireAuthHeader(authHeader);
+    return this.teamsService.findOneTeam(id, validAuth);
   }
 
   @Patch(':id')
@@ -85,9 +94,8 @@ export class TeamsController {
     @Body() updateTeamDto: UpdateTeamDto,
     @Headers('authorization') authHeader?: string,
   ) {
-    return authHeader
-      ? this.teamsService.updateTeam(id, updateTeamDto, authHeader)
-      : this.teamsService.updateTeam(id, updateTeamDto);
+    const validAuth = this.requireAuthHeader(authHeader);
+    return this.teamsService.updateTeam(id, updateTeamDto, validAuth);
   }
 
   @Delete(':id')
@@ -101,9 +109,8 @@ export class TeamsController {
     @Param('id') id: string,
     @Headers('authorization') authHeader?: string,
   ) {
-    return authHeader
-      ? this.teamsService.removeTeam(id, authHeader)
-      : this.teamsService.removeTeam(id);
+    const validAuth = this.requireAuthHeader(authHeader);
+    return this.teamsService.removeTeam(id, validAuth);
   }
 
   // --- TEAM MEMBERS ENDPOINTS ---
@@ -124,9 +131,8 @@ export class TeamsController {
     @Body() addTeamMemberDto: AddTeamMemberDto,
     @Headers('authorization') authHeader?: string,
   ) {
-    return authHeader
-      ? this.teamsService.addMember(teamId, addTeamMemberDto, authHeader)
-      : this.teamsService.addMember(teamId, addTeamMemberDto);
+    const validAuth = this.requireAuthHeader(authHeader);
+    return this.teamsService.addMember(teamId, addTeamMemberDto, validAuth);
   }
 
   @Get(':teamId/members')
@@ -140,9 +146,8 @@ export class TeamsController {
     @Query() query: QueryTeamMemberDto,
     @Headers('authorization') authHeader?: string,
   ) {
-    return authHeader
-      ? this.teamsService.findMembers(teamId, query, authHeader)
-      : this.teamsService.findMembers(teamId, query);
+    const validAuth = this.requireAuthHeader(authHeader);
+    return this.teamsService.findMembers(teamId, query, validAuth);
   }
 
   @Patch(':teamId/members/:memberId')
@@ -159,9 +164,8 @@ export class TeamsController {
     @Body() updateTeamMemberDto: UpdateTeamMemberDto,
     @Headers('authorization') authHeader?: string,
   ) {
-    return authHeader
-      ? this.teamsService.updateMemberRole(teamId, memberId, updateTeamMemberDto, authHeader)
-      : this.teamsService.updateMemberRole(teamId, memberId, updateTeamMemberDto);
+    const validAuth = this.requireAuthHeader(authHeader);
+    return this.teamsService.updateMemberRole(teamId, memberId, updateTeamMemberDto, validAuth);
   }
 
   @Delete(':teamId/members/:memberId')
@@ -176,8 +180,7 @@ export class TeamsController {
     @Param('memberId') memberId: string,
     @Headers('authorization') authHeader?: string,
   ) {
-    return authHeader
-      ? this.teamsService.removeMember(teamId, memberId, authHeader)
-      : this.teamsService.removeMember(teamId, memberId);
+    const validAuth = this.requireAuthHeader(authHeader);
+    return this.teamsService.removeMember(teamId, memberId, validAuth);
   }
 }

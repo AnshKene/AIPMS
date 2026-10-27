@@ -3,10 +3,8 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth/auth-context';
-import { Loader2 } from 'lucide-react';
-
-import { type Role } from '@/lib/auth/auth-storage';
-import { ShieldAlert } from 'lucide-react';
+import { Loader2, ShieldAlert } from 'lucide-react';
+import { type Role, isDesignatedAdmin } from '@/lib/auth/auth-storage';
 import Link from 'next/link';
 
 interface ProtectedRouteProps {
@@ -51,7 +49,13 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
   }
 
   const userRole = user?.role || 'TEAM_MEMBER';
-  if (allowedRoles && allowedRoles.length > 0 && !allowedRoles.includes(userRole)) {
+  const requiresAdmin = allowedRoles?.includes('ADMIN');
+  const failsAdminCheck = requiresAdmin && userRole === 'ADMIN' && !isDesignatedAdmin(user);
+
+  if (
+    (allowedRoles && allowedRoles.length > 0 && !allowedRoles.includes(userRole)) ||
+    failsAdminCheck
+  ) {
     return (
       <div className="flex min-h-[70vh] w-full flex-col items-center justify-center bg-slate-950 p-6 text-slate-100">
         <div className="flex max-w-md flex-col items-center text-center rounded-2xl border border-red-500/20 bg-slate-900/80 p-8 shadow-2xl backdrop-blur-md">
