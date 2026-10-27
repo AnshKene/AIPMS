@@ -1,10 +1,13 @@
 import type { NextConfig } from "next";
+import path from "path";
 
 const rawInternalUrl = process.env.INTERNAL_API_URL || 'http://localhost:4000';
 const internalApiUrl = rawInternalUrl.replace(/\/+$/, '').replace(/\/api$/, '');
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  turbopack: {
+    root: path.resolve(__dirname),
+  },
   reactCompiler: true,
   compress: true,
   poweredByHeader: false,
@@ -16,6 +19,31 @@ const nextConfig: NextConfig = {
       {
         source: '/api/:path*',
         destination: `${internalApiUrl}/api/:path*`,
+      },
+    ];
+  },
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          {
+            key: 'X-Frame-Options',
+            value: 'DENY',
+          },
+          {
+            key: 'X-Content-Type-Options',
+            value: 'nosniff',
+          },
+          {
+            key: 'Referrer-Policy',
+            value: 'strict-origin-when-cross-origin',
+          },
+          {
+            key: 'Permissions-Policy',
+            value: 'camera=(), microphone=(), geolocation=()',
+          },
+        ],
       },
     ];
   },

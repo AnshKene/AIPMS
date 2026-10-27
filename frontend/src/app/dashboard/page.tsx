@@ -62,8 +62,8 @@ function DashboardContent() {
     (searchParams.get('tool') as AIToolType) ||
     (searchParams.get('action') === 'ask_ai' ? 'query' : null);
 
-  // RBAC permission check for project creation
-  const canCreateProject = user?.role === 'ADMIN' || user?.role === 'PROJECT_MANAGER';
+  // RBAC permission check for project creation (PM cannot create projects by default)
+  const canCreateProject = user?.role === 'ADMIN' || user?.role === 'PROJECT_OWNER';
 
   const fetchDashboardData = React.useCallback(async (isSilentRefresh = false) => {
     if (isSilentRefresh) {

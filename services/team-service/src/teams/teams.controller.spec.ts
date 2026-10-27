@@ -46,51 +46,62 @@ describe('TeamsController', () => {
     expect(controller).toBeDefined();
   });
 
-  it('should call teamsService.createTeam', async () => {
+  const validAuthHeader = 'Bearer valid-jwt-token';
+
+  it('should reject calls without Authorization header (DEFECT-06)', async () => {
+    const dto = { projectId: validProjectUuid, name: 'Dev Team' };
+    await expect(controller.createTeam(dto)).rejects.toThrow('Authentication token required');
+    await expect(controller.findAllTeams({})).rejects.toThrow('Authentication token required');
+    await expect(controller.findOneTeam(validTeamUuid)).rejects.toThrow('Authentication token required');
+    await expect(controller.addMember(validTeamUuid, { userId: validUserUuid })).rejects.toThrow('Authentication token required');
+    await expect(controller.removeMember(validTeamUuid, validMemberUuid)).rejects.toThrow('Authentication token required');
+  });
+
+  it('should call teamsService.createTeam with valid authHeader', async () => {
     const dto = { projectId: validProjectUuid, name: 'Dev Team' };
     const expected = { id: validTeamUuid, ...dto };
     mockTeamsService.createTeam.mockResolvedValue(expected);
 
-    const result = await controller.createTeam(dto);
-    expect(service.createTeam).toHaveBeenCalledWith(dto);
+    const result = await controller.createTeam(dto, validAuthHeader);
+    expect(service.createTeam).toHaveBeenCalledWith(dto, validAuthHeader);
     expect(result).toEqual(expected);
   });
 
-  it('should call teamsService.findAllTeams', async () => {
+  it('should call teamsService.findAllTeams with valid authHeader', async () => {
     const query = { page: 1, limit: 20 };
     const expected = { data: [], meta: { total: 0, page: 1, limit: 20, totalPages: 0 } };
     mockTeamsService.findAllTeams.mockResolvedValue(expected);
 
-    const result = await controller.findAllTeams(query);
-    expect(service.findAllTeams).toHaveBeenCalledWith(query);
+    const result = await controller.findAllTeams(query, validAuthHeader);
+    expect(service.findAllTeams).toHaveBeenCalledWith(query, validAuthHeader);
     expect(result).toEqual(expected);
   });
 
-  it('should call teamsService.findOneTeam', async () => {
+  it('should call teamsService.findOneTeam with valid authHeader', async () => {
     const expected = { id: validTeamUuid, name: 'Dev Team' };
     mockTeamsService.findOneTeam.mockResolvedValue(expected);
 
-    const result = await controller.findOneTeam(validTeamUuid);
-    expect(service.findOneTeam).toHaveBeenCalledWith(validTeamUuid);
+    const result = await controller.findOneTeam(validTeamUuid, validAuthHeader);
+    expect(service.findOneTeam).toHaveBeenCalledWith(validTeamUuid, validAuthHeader);
     expect(result).toEqual(expected);
   });
 
-  it('should call teamsService.addMember', async () => {
+  it('should call teamsService.addMember with valid authHeader', async () => {
     const dto = { userId: validUserUuid, role: TeamRole.TEAM_LEAD };
     const expected = { id: validMemberUuid, teamId: validTeamUuid, ...dto };
     mockTeamsService.addMember.mockResolvedValue(expected);
 
-    const result = await controller.addMember(validTeamUuid, dto);
-    expect(service.addMember).toHaveBeenCalledWith(validTeamUuid, dto);
+    const result = await controller.addMember(validTeamUuid, dto, validAuthHeader);
+    expect(service.addMember).toHaveBeenCalledWith(validTeamUuid, dto, validAuthHeader);
     expect(result).toEqual(expected);
   });
 
-  it('should call teamsService.removeMember', async () => {
+  it('should call teamsService.removeMember with valid authHeader', async () => {
     const expected = { message: 'Team member removed successfully' };
     mockTeamsService.removeMember.mockResolvedValue(expected);
 
-    const result = await controller.removeMember(validTeamUuid, validMemberUuid);
-    expect(service.removeMember).toHaveBeenCalledWith(validTeamUuid, validMemberUuid);
+    const result = await controller.removeMember(validTeamUuid, validMemberUuid, validAuthHeader);
+    expect(service.removeMember).toHaveBeenCalledWith(validTeamUuid, validMemberUuid, validAuthHeader);
     expect(result).toEqual(expected);
   });
 });

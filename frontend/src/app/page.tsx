@@ -41,6 +41,7 @@ export default function LandingPage() {
     return false;
   });
   const [activeDropdown, setActiveDropdown] = React.useState<string | null>(null);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
 
   const toggleTheme = () => {
     if (typeof window !== 'undefined') {
@@ -237,67 +238,149 @@ export default function LandingPage() {
 
             {/* Mobile Sheet Navigation Trigger */}
             <div className="flex items-center md:hidden ml-1">
-              <Sheet>
+              <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
                 <SheetTrigger asChild>
                   <Button
                     variant="outline"
                     size="icon"
-                    className="h-9 w-9 rounded-xl border-slate-200 dark:border-slate-800"
+                    className="h-9 w-9 rounded-xl border-slate-200 dark:border-slate-800 shadow-2xs cursor-pointer"
                     aria-label="Open navigation menu"
                   >
                     <Menu className="h-4.5 w-4.5 text-slate-700 dark:text-slate-200" />
                   </Button>
                 </SheetTrigger>
-                <SheetContent side="right" className="p-6 w-[300px]">
-                  <div className="space-y-6">
-                    <div className="flex items-center gap-2.5 pb-4 border-b border-slate-100 dark:border-slate-800">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-600 text-white font-bold text-xs">
-                        <Sparkles className="h-4 w-4" />
+                <SheetContent side="right" className="p-0 w-[300px] sm:w-[340px] max-w-[85vw] flex flex-col justify-between overflow-y-auto">
+                  <div className="p-5 space-y-5">
+                    {/* Brand Header & Theme Switch */}
+                    <div className="flex items-center justify-between pb-3.5 border-b border-slate-100 dark:border-slate-800">
+                      <div className="flex items-center gap-2.5">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-600 text-white font-bold text-xs shadow-xs">
+                          <Sparkles className="h-4 w-4" />
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="font-extrabold text-sm text-slate-900 dark:text-white leading-tight">
+                            AIPMS
+                          </span>
+                          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
+                            Decision Intelligence
+                          </span>
+                        </div>
                       </div>
-                      <span className="font-bold text-base text-slate-900 dark:text-white">
-                        AIPMS
+
+                      <button
+                        type="button"
+                        onClick={toggleTheme}
+                        aria-label={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                        className="p-2 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+                      >
+                        {isDark ? (
+                          <Sun className="h-4 w-4 text-amber-400" />
+                        ) : (
+                          <Moon className="h-4 w-4 text-slate-600" />
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Platform Workspaces Section */}
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-2 block">
+                        Platform Workspaces
                       </span>
+                      <nav className="space-y-0.5">
+                        <Link
+                          href="/dashboard"
+                          onClick={() => setIsMobileMenuOpen(false)}
+                          className="flex items-center gap-2.5 p-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                        >
+                          <LayoutDashboard className="h-4 w-4 text-blue-600 shrink-0" />
+                          <span>Executive Dashboard</span>
+                        </Link>
+                        <Link
+                          href="/projects"
+                          onClick={() => setIsMobileMenuOpen(false)}
+                          className="flex items-center gap-2.5 p-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                        >
+                          <FolderKanban className="h-4 w-4 text-emerald-600 shrink-0" />
+                          <span>Projects Scope Engine</span>
+                        </Link>
+                        <Link
+                          href="/tasks"
+                          onClick={() => setIsMobileMenuOpen(false)}
+                          className="flex items-center gap-2.5 p-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                        >
+                          <CheckSquare className="h-4 w-4 text-purple-600 shrink-0" />
+                          <span>Task Lifecycle & Kanban</span>
+                        </Link>
+                        <Link
+                          href="/sprints"
+                          onClick={() => setIsMobileMenuOpen(false)}
+                          className="flex items-center gap-2.5 p-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                        >
+                          <Zap className="h-4 w-4 text-amber-600 shrink-0" />
+                          <span>Sprint Velocity & Goals</span>
+                        </Link>
+                        <Link
+                          href="/risks"
+                          onClick={() => setIsMobileMenuOpen(false)}
+                          className="flex items-center gap-2.5 p-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                        >
+                          <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />
+                          <span>Risk Matrix & Radar</span>
+                        </Link>
+                      </nav>
                     </div>
 
-                    <div className="space-y-3">
-                      <a
-                        href="#ai"
-                        className="block text-sm font-semibold text-slate-700 dark:text-slate-200 hover:text-blue-600"
-                      >
-                        AI Intelligence
-                      </a>
-                      <a
-                        href="#features"
-                        className="block text-sm font-semibold text-slate-700 dark:text-slate-200 hover:text-blue-600"
-                      >
-                        Features
-                      </a>
-                      <a
-                        href="#workflow"
-                        className="block text-sm font-semibold text-slate-700 dark:text-slate-200 hover:text-blue-600"
-                      >
-                        How It Works
-                      </a>
-                      <a
-                        href="#health"
-                        className="block text-sm font-semibold text-slate-700 dark:text-slate-200 hover:text-blue-600"
-                      >
-                        Decision Support
-                      </a>
+                    {/* Page Anchors Section */}
+                    <div className="space-y-1 pt-2 border-t border-slate-100 dark:border-slate-800">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-2 block">
+                        Features & Methodology
+                      </span>
+                      <nav className="space-y-0.5">
+                        <a
+                          href="#ai"
+                          onClick={() => setIsMobileMenuOpen(false)}
+                          className="block p-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-colors"
+                        >
+                          AI Intelligence
+                        </a>
+                        <a
+                          href="#features"
+                          onClick={() => setIsMobileMenuOpen(false)}
+                          className="block p-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-colors"
+                        >
+                          Features Overview
+                        </a>
+                        <a
+                          href="#workflow"
+                          onClick={() => setIsMobileMenuOpen(false)}
+                          className="block p-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-colors"
+                        >
+                          How It Works
+                        </a>
+                        <a
+                          href="#health"
+                          onClick={() => setIsMobileMenuOpen(false)}
+                          className="block p-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-colors"
+                        >
+                          Decision Support Pattern
+                        </a>
+                      </nav>
                     </div>
+                  </div>
 
-                    <div className="pt-6 border-t border-slate-100 dark:border-slate-800 space-y-2.5">
-                      <Link href="/login" className="block w-full">
-                        <Button variant="outline" className="w-full justify-center">
-                          Sign In
-                        </Button>
-                      </Link>
-                      <Link href="/register" className="block w-full">
-                        <Button className="w-full justify-center bg-blue-600 text-white">
-                          Get Started
-                        </Button>
-                      </Link>
-                    </div>
+                  {/* Auth Actions in Drawer Footer */}
+                  <div className="p-5 border-t border-slate-100 dark:border-slate-800 space-y-2 bg-slate-50/50 dark:bg-slate-900/50">
+                    <Link href="/login" onClick={() => setIsMobileMenuOpen(false)} className="block w-full">
+                      <Button variant="outline" className="w-full justify-center text-xs font-semibold h-10 rounded-xl">
+                        Sign In
+                      </Button>
+                    </Link>
+                    <Link href="/register" onClick={() => setIsMobileMenuOpen(false)} className="block w-full">
+                      <Button className="w-full justify-center bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs h-10 rounded-xl shadow-xs">
+                        <span>Get Started Free</span>
+                        <ArrowRight className="h-3.5 w-3.5 ml-1.5" />
+                      </Button>
+                    </Link>
                   </div>
                 </SheetContent>
               </Sheet>
@@ -358,12 +441,12 @@ export default function LandingPage() {
               </div>
 
               {/* Key Trust Checkmarks */}
-              <div className="flex items-center gap-6 pt-4 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                <div className="flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-4 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                <div className="flex items-center gap-1.5 shrink-0">
                   <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
                   <span>Real-time Risk Evaluation</span>
                 </div>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 shrink-0">
                   <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
                   <span>Closed-loop Intelligence</span>
                 </div>
@@ -372,7 +455,7 @@ export default function LandingPage() {
 
             {/* Right Column: Hero Visual Product Preview Card */}
             <div className="lg:col-span-6 w-full">
-              <div className="relative rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 shadow-2xl shadow-slate-900/10 dark:shadow-black/60 space-y-4">
+              <div className="relative rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-6 shadow-2xl shadow-slate-900/10 dark:shadow-black/60 space-y-4">
                 {/* Header Bar */}
                 <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
                   <div className="flex items-center gap-2">
@@ -390,28 +473,28 @@ export default function LandingPage() {
                 </div>
 
                 {/* Simulated KPI Grid */}
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 space-y-1">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                  <div className="p-2 sm:p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 space-y-1 min-w-0">
+                    <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider block truncate">
                       Active Projects
                     </span>
-                    <span className="text-lg font-bold text-slate-900 dark:text-white">
+                    <span className="text-sm sm:text-lg font-bold text-slate-900 dark:text-white block truncate">
                       12
                     </span>
                   </div>
-                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 space-y-1">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  <div className="p-2 sm:p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 space-y-1 min-w-0">
+                    <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider block truncate">
                       Tasks Completed
                     </span>
-                    <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
+                    <span className="text-sm sm:text-lg font-bold text-emerald-600 dark:text-emerald-400 block truncate">
                       148 / 180
                     </span>
                   </div>
-                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 space-y-1">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  <div className="p-2 sm:p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 space-y-1 min-w-0">
+                    <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider block truncate">
                       Open Risks
                     </span>
-                    <span className="text-lg font-bold text-amber-600 dark:text-amber-400">
+                    <span className="text-sm sm:text-lg font-bold text-amber-600 dark:text-amber-400 block truncate">
                       3 High
                     </span>
                   </div>

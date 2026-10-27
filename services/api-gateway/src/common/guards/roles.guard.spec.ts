@@ -253,6 +253,54 @@ describe('RolesGuard', () => {
       });
       await expect(guard.canActivate(deleteContext)).rejects.toThrow(ForbiddenException);
     });
+
+    it('should block PROJECT_MANAGER from creating projects by default', async () => {
+      vi.spyOn(authService, 'getCurrentUser').mockResolvedValue({
+        id: 'pm-1',
+        role: Role.PROJECT_MANAGER,
+      } as any);
+
+      const createProjContext = createMockContext({
+        path: '/api/projects',
+        method: 'POST',
+        authHeader: 'Bearer pm-token',
+      });
+      await expect(guard.canActivate(createProjContext)).rejects.toThrow(
+        'Project Managers cannot create projects by default',
+      );
+    });
+
+    it('should block PROJECT_MANAGER from transferring project ownership', async () => {
+      vi.spyOn(authService, 'getCurrentUser').mockResolvedValue({
+        id: 'pm-1',
+        role: Role.PROJECT_MANAGER,
+      } as any);
+
+      const transferContext = createMockContext({
+        path: '/api/projects/11111111-1111-4111-a111-111111111111/transfer-ownership',
+        method: 'POST',
+        authHeader: 'Bearer pm-token',
+      });
+      await expect(guard.canActivate(transferContext)).rejects.toThrow(
+        'Project Managers cannot transfer project ownership',
+      );
+    });
+
+    it('should block PROJECT_MANAGER from deleting projects', async () => {
+      vi.spyOn(authService, 'getCurrentUser').mockResolvedValue({
+        id: 'pm-1',
+        role: Role.PROJECT_MANAGER,
+      } as any);
+
+      const deleteProjContext = createMockContext({
+        path: '/api/projects/11111111-1111-4111-a111-111111111111',
+        method: 'DELETE',
+        authHeader: 'Bearer pm-token',
+      });
+      await expect(guard.canActivate(deleteProjContext)).rejects.toThrow(
+        'Project Managers cannot delete or archive projects',
+      );
+    });
   });
 
   describe('Security Regression Tests - Health Bypass (VULN-015) & RBAC Hardening', () => {

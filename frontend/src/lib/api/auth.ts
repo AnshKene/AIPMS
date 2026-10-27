@@ -51,4 +51,50 @@ export const authApi = {
       { token },
     );
   },
+
+  deactivateUser: async (userId: string, token?: string | null) => {
+    return apiClient.post<{ id: string; status: string; deactivatedAt: string }>(
+      `auth/users/${userId}/deactivate`,
+      {},
+      { token },
+    );
+  },
+
+  reactivateUser: async (userId: string, token?: string | null) => {
+    return apiClient.post<{ id: string; status: string }>(
+      `auth/users/${userId}/reactivate`,
+      {},
+      { token },
+    );
+  },
+
+  deleteUser: async (userId: string, token?: string | null) => {
+    return apiClient.delete<{ message: string; userId: string }>(
+      `auth/users/${userId}`,
+      { token },
+    );
+  },
+
+  getDirectory: async (token?: string | null) => {
+    return apiClient.get<Array<{
+      id: string;
+      name: string | null;
+      email: string;
+      role?: string;
+      status?: 'ACTIVE' | 'INACTIVE';
+      deactivatedAt?: string | null;
+      avatarUrl?: string;
+    }>>('auth/directory', { token });
+  },
+
+  listUsers: async (token?: string | null) => {
+    return apiClient.get<Array<{
+      id: string;
+      name: string | null;
+      email: string;
+      role: string;
+      status?: 'ACTIVE' | 'INACTIVE';
+      deactivatedAt?: string | null;
+    }>>('auth/users', { token });
+  },
 };

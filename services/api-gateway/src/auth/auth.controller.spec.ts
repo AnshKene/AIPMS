@@ -12,6 +12,7 @@ describe('AuthController (API Gateway)', () => {
     login: vi.fn(),
     getCurrentUser: vi.fn(),
     logout: vi.fn(),
+    getDirectory: vi.fn(),
   };
 
   beforeEach(async () => {
@@ -72,6 +73,16 @@ describe('AuthController (API Gateway)', () => {
 
     const result = await controller.logout(tokenHeader);
     expect(service.logout).toHaveBeenCalledWith(tokenHeader);
+    expect(result).toEqual(expected);
+  });
+
+  it('should call authService.getDirectory', async () => {
+    const tokenHeader = 'Bearer token123';
+    const expected = [{ id: '123', name: 'User', email: 'user@example.com', role: 'TEAM_MEMBER', status: 'ACTIVE' }];
+    mockAuthService.getDirectory.mockResolvedValue(expected);
+
+    const result = await controller.getDirectory(tokenHeader);
+    expect(service.getDirectory).toHaveBeenCalledWith(tokenHeader);
     expect(result).toEqual(expected);
   });
 });

@@ -52,6 +52,35 @@ describe('Task Service (e2e)', () => {
     });
   });
 
+  const validAuthHeader = 'Bearer valid-jwt-token';
+
+  describe('Authentication Enforcement (DEFECT-06)', () => {
+    it('should reject requests without Authorization header with 401 Unauthorized', async () => {
+      await request(app.getHttpServer()).get('/api/tasks').expect(401);
+      await request(app.getHttpServer())
+        .post('/api/tasks')
+        .send({ projectId: projectUuid, title: 'Valid Task' })
+        .expect(401);
+      await request(app.getHttpServer()).get(`/api/tasks/${validUuid1}`).expect(401);
+      await request(app.getHttpServer())
+        .patch(`/api/tasks/${validUuid1}`)
+        .send({ title: 'New Title' })
+        .expect(401);
+      await request(app.getHttpServer()).delete(`/api/tasks/${validUuid1}`).expect(401);
+      await request(app.getHttpServer())
+        .post(`/api/tasks/${validUuid1}/dependencies`)
+        .send({ dependsOnTaskId: validUuid2 })
+        .expect(401);
+      await request(app.getHttpServer()).get(`/api/tasks/${validUuid1}/dependencies`).expect(401);
+      await request(app.getHttpServer()).delete(`/api/tasks/${validUuid1}/dependencies/${depUuid}`).expect(401);
+    });
+
+    it('should reject requests with invalid Authorization format with 401 Unauthorized', async () => {
+      await request(app.getHttpServer()).get('/api/tasks').set('Authorization', 'Basic invalid').expect(401);
+      await request(app.getHttpServer()).get('/api/tasks').set('Authorization', 'Bearer').expect(401);
+    });
+  });
+
   describe('POST /api/tasks', () => {
     it('should create a task on valid payload', async () => {
       const createdTask = {
@@ -69,6 +98,7 @@ describe('Task Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post('/api/tasks')
+        .set('Authorization', validAuthHeader)
         .send({
           projectId: projectUuid,
           title: 'Implement task feature',
@@ -84,6 +114,7 @@ describe('Task Service (e2e)', () => {
     it('should return 400 Bad Request on invalid payload', async () => {
       const response = await request(app.getHttpServer())
         .post('/api/tasks')
+        .set('Authorization', validAuthHeader)
         .send({
           title: '',
           projectId: 'not-a-uuid',
@@ -113,6 +144,7 @@ describe('Task Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .get('/api/tasks?page=1&limit=20')
+        .set('Authorization', validAuthHeader)
         .expect(200);
 
       expect(response.body).toEqual(paginatedResult);
@@ -131,6 +163,7 @@ describe('Task Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .get(`/api/tasks/${validUuid1}`)
+        .set('Authorization', validAuthHeader)
         .expect(200);
 
       expect(response.body).toEqual(task);
@@ -139,6 +172,7 @@ describe('Task Service (e2e)', () => {
     it('should return 400 Bad Request on invalid UUID parameter', async () => {
       const response = await request(app.getHttpServer())
         .get('/api/tasks/not-a-valid-uuid')
+        .set('Authorization', validAuthHeader)
         .expect(400);
 
       expect(response.body.statusCode).toBe(400);
@@ -157,6 +191,7 @@ describe('Task Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .patch(`/api/tasks/${validUuid1}`)
+        .set('Authorization', validAuthHeader)
         .send({
           title: 'Updated Task Title',
           status: 'IN_PROGRESS',
@@ -178,6 +213,7 @@ describe('Task Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .delete(`/api/tasks/${validUuid1}`)
+        .set('Authorization', validAuthHeader)
         .expect(200);
 
       expect(response.body).toEqual(deleteResult);
@@ -197,6 +233,7 @@ describe('Task Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post(`/api/tasks/${validUuid1}/dependencies`)
+        .set('Authorization', validAuthHeader)
         .send({ dependsOnTaskId: validUuid2 })
         .expect(201);
 
@@ -211,6 +248,7 @@ describe('Task Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post(`/api/tasks/${validUuid1}/dependencies`)
+        .set('Authorization', validAuthHeader)
         .send({ dependsOnTaskId: validUuid2 })
         .expect(409);
 
@@ -234,6 +272,7 @@ describe('Task Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .get(`/api/tasks/${validUuid1}/dependencies`)
+        .set('Authorization', validAuthHeader)
         .expect(200);
 
       expect(response.body).toEqual(listResult);
@@ -250,6 +289,7 @@ describe('Task Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .delete(`/api/tasks/${validUuid1}/dependencies/${depUuid}`)
+        .set('Authorization', validAuthHeader)
         .expect(200);
 
       expect(response.body).toEqual(removeResult);
@@ -263,6 +303,7 @@ describe('Task Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .delete(`/api/tasks/${validUuid1}/dependencies/${depUuid}`)
+        .set('Authorization', validAuthHeader)
         .expect(404);
 
       expect(response.body.statusCode).toBe(404);

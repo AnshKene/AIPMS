@@ -42,6 +42,7 @@ import { CommandSearchModal } from './CommandSearchModal';
 import { NotificationsPopover } from './NotificationsPopover';
 import { AccountModal, type AccountTab } from './AccountModal';
 import { useAuth } from '@/lib/auth/auth-context';
+import { isDesignatedAdmin } from '@/lib/auth/auth-storage';
 import { cn } from '@/lib/utils';
 
 export function AppHeader() {
@@ -158,6 +159,9 @@ export function AppHeader() {
 
   const formatRole = (role?: string) => {
     if (!role) return 'USER';
+    if (role === 'ADMIN' && !isDesignatedAdmin(user)) {
+      return 'USER';
+    }
     return role.replace(/_/g, ' ');
   };
 

@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 
 export type StatusType =
   | 'ADMIN'
+  | 'PROJECT_OWNER'
   | 'PROJECT_MANAGER'
   | 'TEAM_MEMBER'
   | 'VIEWER'
@@ -34,6 +35,18 @@ export function AdminStatusBadge({ status, className, showIcon = true }: AdminSt
         >
           {showIcon && <ShieldCheck className="h-3 w-3 text-purple-600 dark:text-purple-400" />}
           ADMIN
+        </Badge>
+      );
+    case 'PROJECT_OWNER':
+      return (
+        <Badge
+          className={cn(
+            'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 font-semibold gap-1 text-[10px]',
+            className,
+          )}
+        >
+          {showIcon && <FolderKanban className="h-3 w-3 text-indigo-600 dark:text-indigo-400" />}
+          PROJECT OWNER
         </Badge>
       );
     case 'PROJECT_MANAGER':

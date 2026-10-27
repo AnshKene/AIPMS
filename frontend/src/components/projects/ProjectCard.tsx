@@ -7,6 +7,7 @@ import { formatProjectName } from '@/lib/utils';
 import type { Project } from '@/lib/api/projects';
 import type { Task } from '@/lib/api/tasks';
 import type { Risk } from '@/lib/api/risks';
+import { userDirectory } from '@/lib/auth/user-directory';
 
 interface ProjectCardProps {
   project: Project;
@@ -118,8 +119,8 @@ export function ProjectCard({
                   {isCurrentUserOwner ? (
                     <span className="font-semibold text-blue-600 dark:text-blue-400">You (Owner)</span>
                   ) : (
-                    <span className="text-slate-500 dark:text-slate-400 font-mono text-[10px]">
-                      Owner: {project.ownerId ? `${project.ownerId.slice(0, 8)}...` : 'Unassigned'}
+                    <span className="text-slate-600 dark:text-slate-300 font-medium text-[11px]">
+                      Owner: {project.ownerId ? userDirectory.getUser(project.ownerId).name : 'Unassigned'}
                     </span>
                   )}
                 </span>
@@ -133,12 +134,25 @@ export function ProjectCard({
               )}
             </div>
 
-            <div className="flex items-center gap-1.5 text-slate-400 dark:text-slate-500">
-              <CalendarDays className="h-3.5 w-3.5 shrink-0" />
-              <span>
-                {formatDate(project.startDate)}
-                {(project.startDate || project.endDate) && ' → '}
-                {formatDate(project.endDate)}
+            <div className="flex items-center justify-between text-slate-400 dark:text-slate-500">
+              <div className="flex items-center gap-1.5">
+                <CalendarDays className="h-3.5 w-3.5 shrink-0" />
+                <span>
+                  {formatDate(project.startDate)}
+                  {(project.startDate || project.endDate) && ' → '}
+                  {formatDate(project.endDate)}
+                </span>
+              </div>
+              <span
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  navigator.clipboard.writeText(project.id);
+                }}
+                title="Click to copy Project UUID"
+                className="font-mono text-[10px] text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded transition-colors"
+              >
+                ID: {project.id.slice(0, 8)}...
               </span>
             </div>
           </div>

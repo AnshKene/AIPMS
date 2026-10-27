@@ -10,6 +10,7 @@ import {
   Patch,
   Post,
   Query,
+  UnauthorizedException,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
@@ -31,6 +32,17 @@ import { QuerySprintDto } from './dto/query-sprint.dto.js';
 export class SprintsController {
   constructor(private readonly sprintsService: SprintsService) {}
 
+  private requireAuthHeader(authHeader?: string): string {
+    if (!authHeader || !authHeader.trim().toLowerCase().startsWith('bearer ')) {
+      throw new UnauthorizedException('Authentication token required');
+    }
+    const token = authHeader.split(' ')[1]?.trim();
+    if (!token) {
+      throw new UnauthorizedException('Authentication token required');
+    }
+    return authHeader;
+  }
+
   @Post()
   @ApiOperation({ summary: 'Create a new sprint (initial status is always PLANNED)' })
   @ApiCreatedResponse({ description: 'Sprint created successfully' })
@@ -39,7 +51,8 @@ export class SprintsController {
     @Body() dto: CreateSprintDto,
     @Headers('authorization') authHeader?: string,
   ) {
-    return this.sprintsService.create(dto, authHeader);
+    const validAuth = this.requireAuthHeader(authHeader);
+    return this.sprintsService.create(dto, validAuth);
   }
 
   @Get()
@@ -50,7 +63,8 @@ export class SprintsController {
     @Query() query: QuerySprintDto,
     @Headers('authorization') authHeader?: string,
   ) {
-    return this.sprintsService.findAll(query, authHeader);
+    const validAuth = this.requireAuthHeader(authHeader);
+    return this.sprintsService.findAll(query, validAuth);
   }
 
   @Get(':id')
@@ -63,7 +77,8 @@ export class SprintsController {
     @Param('id') id: string,
     @Headers('authorization') authHeader?: string,
   ) {
-    return this.sprintsService.findOne(id, authHeader);
+    const validAuth = this.requireAuthHeader(authHeader);
+    return this.sprintsService.findOne(id, validAuth);
   }
 
   @Patch(':id')
@@ -77,7 +92,8 @@ export class SprintsController {
     @Body() dto: UpdateSprintDto,
     @Headers('authorization') authHeader?: string,
   ) {
-    return this.sprintsService.update(id, dto, authHeader);
+    const validAuth = this.requireAuthHeader(authHeader);
+    return this.sprintsService.update(id, dto, validAuth);
   }
 
   @Post(':id/start')
@@ -92,7 +108,8 @@ export class SprintsController {
     @Param('id') id: string,
     @Headers('authorization') authHeader?: string,
   ) {
-    return this.sprintsService.start(id, authHeader);
+    const validAuth = this.requireAuthHeader(authHeader);
+    return this.sprintsService.start(id, validAuth);
   }
 
   @Post(':id/complete')
@@ -107,7 +124,8 @@ export class SprintsController {
     @Param('id') id: string,
     @Headers('authorization') authHeader?: string,
   ) {
-    return this.sprintsService.complete(id, authHeader);
+    const validAuth = this.requireAuthHeader(authHeader);
+    return this.sprintsService.complete(id, validAuth);
   }
 
   @Post(':id/cancel')
@@ -122,7 +140,8 @@ export class SprintsController {
     @Param('id') id: string,
     @Headers('authorization') authHeader?: string,
   ) {
-    return this.sprintsService.cancel(id, authHeader);
+    const validAuth = this.requireAuthHeader(authHeader);
+    return this.sprintsService.cancel(id, validAuth);
   }
 
   @Delete(':id')
@@ -137,6 +156,7 @@ export class SprintsController {
     @Param('id') id: string,
     @Headers('authorization') authHeader?: string,
   ) {
-    return this.sprintsService.remove(id, authHeader);
+    const validAuth = this.requireAuthHeader(authHeader);
+    return this.sprintsService.remove(id, validAuth);
   }
 }

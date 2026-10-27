@@ -137,5 +137,39 @@ describe('AuditService', () => {
       expect(record.context?.token).toBe('[REDACTED]');
       expect(record.context?.safeParam).toBe('public-data');
     });
+
+    it('should query logs from Supabase when available across restarts', async () => {
+      const mockQueryBuilder: any = {
+        select: vi.fn().mockReturnThis(),
+        ilike: vi.fn().mockReturnThis(),
+        or: vi.fn().mockReturnThis(),
+        order: vi.fn().mockReturnThis(),
+        range: vi.fn().mockResolvedValue({
+          data: [
+            {
+              id: 'audit-durable-001',
+              actor_id: 'admin-001',
+              actor_email: 'admin.ansh@aipms.com',
+              action: 'ROLE_ASSIGNED',
+              target_resource: 'user-002',
+              previous_value: 'VIEWER',
+              new_value: 'PROJECT_MANAGER',
+              outcome: 'SUCCESS',
+              created_at: new Date().toISOString(),
+            },
+          ],
+          count: 1,
+          error: null,
+        }),
+      };
+      (service as any).supabase = {
+        from: vi.fn().mockReturnValue(mockQueryBuilder),
+      };
+
+      const result = await service.queryLogs({ action: 'ROLE_ASSIGNED' });
+      expect(result.items.length).toBe(1);
+      expect(result.items[0].id).toBe('audit-durable-001');
+      expect(result.items[0].actorEmail).toBe('admin.ansh@aipms.com');
+    });
   });
 });

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   Headers,
@@ -120,6 +121,17 @@ export class AuthController {
     return this.authService.listUsers();
   }
 
+  @Get('directory')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List public profiles for user assignment selectors (Authenticated users)' })
+  @ApiResponse({ status: 200, description: 'User directory profiles retrieved successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Missing or invalid token' })
+  async getDirectory(@Headers('authorization') authHeader?: string) {
+    this.extractToken(authHeader);
+    return this.authService.getDirectoryProfiles();
+  }
+
   @Patch('users/:id/role')
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
@@ -133,6 +145,69 @@ export class AuthController {
     return this.authService.updateUserRole(
       id,
       dto.role,
+      caller.role,
+      caller.id,
+      caller.email,
+    );
+  }
+
+  @Post('users/:id/deactivate')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Deactivate a user account (ADMIN only)' })
+  @ApiResponse({ status: 200, description: 'User account deactivated successfully' })
+  @ApiResponse({ status: 400, description: 'User not found or invalid request' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Only administrator can deactivate, or designated admin targeted' })
+  @ApiResponse({ status: 409, description: 'Conflict - User is already deactivated or owns active projects' })
+  async deactivateUser(
+    @Param('id') id: string,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    const caller = await this.requireAdmin(authHeader);
+    return this.authService.deactivateUser(
+      id,
+      caller.role,
+      caller.id,
+      caller.email,
+    );
+  }
+
+  @Post('users/:id/reactivate')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Reactivate an inactive user account (ADMIN only)' })
+  @ApiResponse({ status: 200, description: 'User account reactivated successfully' })
+  @ApiResponse({ status: 400, description: 'User not found or invalid request' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Only administrator can reactivate' })
+  @ApiResponse({ status: 409, description: 'Conflict - User is already active' })
+  async reactivateUser(
+    @Param('id') id: string,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    const caller = await this.requireAdmin(authHeader);
+    return this.authService.reactivateUser(
+      id,
+      caller.role,
+      caller.id,
+      caller.email,
+    );
+  }
+
+  @Delete('users/:id')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Permanently delete an inactive user account (ADMIN only)' })
+  @ApiResponse({ status: 200, description: 'User account permanently deleted successfully' })
+  @ApiResponse({ status: 400, description: 'User not found or account is not deactivated' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Only administrator can delete, or designated admin targeted' })
+  @ApiResponse({ status: 409, description: 'Conflict - User owns projects that must be transferred first' })
+  async deleteUser(
+    @Param('id') id: string,
+    @Headers('authorization') authHeader?: string,
+  ) {
+    const caller = await this.requireAdmin(authHeader);
+    return this.authService.deleteUser(
+      id,
       caller.role,
       caller.id,
       caller.email,
