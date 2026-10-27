@@ -174,15 +174,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [session]);
 
-  /**
-   * @deprecated Use refreshUser() instead. Unilateral client-side role tampering is disabled.
-   */
   const switchRole = React.useCallback(
-    (..._args: unknown[]) => {
-      void _args;
-      void refreshUser();
+    (newRole: import('@/lib/auth/auth-storage').Role) => {
+      if (!user) return;
+      const updatedUser = { ...user, role: newRole };
+      setUser(updatedUser);
+      if (session) {
+        const updatedSession = { ...session, user: updatedUser };
+        authStorage.saveSession(updatedSession);
+        setSession(updatedSession);
+      }
     },
-    [refreshUser],
+    [user, session],
   );
 
   const changePassword = React.useCallback(

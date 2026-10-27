@@ -57,7 +57,7 @@ CREATE POLICY "sprints_insert_project_access"
   FOR INSERT
   TO authenticated
   WITH CHECK (
-    public.aipms_user_can_manage_project(project_id)
+    public.aipms_user_has_project_access(project_id)
   );
 
 CREATE POLICY "sprints_update_project_access"
@@ -65,10 +65,10 @@ CREATE POLICY "sprints_update_project_access"
   FOR UPDATE
   TO authenticated
   USING (
-    public.aipms_user_can_manage_project(project_id)
+    public.aipms_user_has_project_access(project_id)
   )
   WITH CHECK (
-    public.aipms_user_can_manage_project(project_id)
+    public.aipms_user_has_project_access(project_id)
   );
 
 CREATE POLICY "sprints_delete_project_access"
@@ -76,5 +76,5 @@ CREATE POLICY "sprints_delete_project_access"
   FOR DELETE
   TO authenticated
   USING (
-    public.aipms_user_can_manage_project(project_id)
+    public.aipms_user_has_project_access(project_id)
   );

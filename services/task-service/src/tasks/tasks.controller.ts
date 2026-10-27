@@ -10,7 +10,6 @@ import {
   Patch,
   Post,
   Query,
-  UnauthorizedException,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
@@ -34,17 +33,6 @@ import { QueryTaskDependencyDto } from './dto/query-task-dependency.dto.js';
 export class TasksController {
   constructor(private readonly tasksService: TasksService) {}
 
-  private requireAuthHeader(authHeader?: string): string {
-    if (!authHeader || !authHeader.trim().toLowerCase().startsWith('bearer ')) {
-      throw new UnauthorizedException('Authentication token required');
-    }
-    const token = authHeader.split(' ')[1]?.trim();
-    if (!token) {
-      throw new UnauthorizedException('Authentication token required');
-    }
-    return authHeader;
-  }
-
   @Post()
   @ApiOperation({ summary: 'Create a new task' })
   @ApiCreatedResponse({ description: 'Task created successfully' })
@@ -53,8 +41,7 @@ export class TasksController {
     @Body() dto: CreateTaskDto,
     @Headers('authorization') authHeader?: string,
   ) {
-    const validAuth = this.requireAuthHeader(authHeader);
-    return this.tasksService.create(dto, validAuth);
+    return this.tasksService.create(dto, authHeader);
   }
 
   @Get()
@@ -65,8 +52,7 @@ export class TasksController {
     @Query() query: QueryTaskDto,
     @Headers('authorization') authHeader?: string,
   ) {
-    const validAuth = this.requireAuthHeader(authHeader);
-    return this.tasksService.findAll(query, validAuth);
+    return this.tasksService.findAll(query, authHeader);
   }
 
   @Get(':id')
@@ -79,8 +65,7 @@ export class TasksController {
     @Param('id') id: string,
     @Headers('authorization') authHeader?: string,
   ) {
-    const validAuth = this.requireAuthHeader(authHeader);
-    return this.tasksService.findOne(id, validAuth);
+    return this.tasksService.findOne(id, authHeader);
   }
 
   @Patch(':id')
@@ -94,8 +79,7 @@ export class TasksController {
     @Body() dto: UpdateTaskDto,
     @Headers('authorization') authHeader?: string,
   ) {
-    const validAuth = this.requireAuthHeader(authHeader);
-    return this.tasksService.update(id, dto, validAuth);
+    return this.tasksService.update(id, dto, authHeader);
   }
 
   @Delete(':id')
@@ -109,8 +93,7 @@ export class TasksController {
     @Param('id') id: string,
     @Headers('authorization') authHeader?: string,
   ) {
-    const validAuth = this.requireAuthHeader(authHeader);
-    return this.tasksService.remove(id, validAuth);
+    return this.tasksService.remove(id, authHeader);
   }
 
   @Post(':id/dependencies')
@@ -125,8 +108,7 @@ export class TasksController {
     @Body() dto: AddTaskDependencyDto,
     @Headers('authorization') authHeader?: string,
   ) {
-    const validAuth = this.requireAuthHeader(authHeader);
-    return this.tasksService.addDependency(taskId, dto, validAuth);
+    return this.tasksService.addDependency(taskId, dto, authHeader);
   }
 
   @Get(':id/dependencies')
@@ -140,8 +122,7 @@ export class TasksController {
     @Query() query: QueryTaskDependencyDto,
     @Headers('authorization') authHeader?: string,
   ) {
-    const validAuth = this.requireAuthHeader(authHeader);
-    return this.tasksService.listDependencies(taskId, query, validAuth);
+    return this.tasksService.listDependencies(taskId, query, authHeader);
   }
 
   @Delete(':taskId/dependencies/:dependencyId')
@@ -157,7 +138,6 @@ export class TasksController {
     @Param('dependencyId') dependencyId: string,
     @Headers('authorization') authHeader?: string,
   ) {
-    const validAuth = this.requireAuthHeader(authHeader);
-    return this.tasksService.removeDependency(taskId, dependencyId, validAuth);
+    return this.tasksService.removeDependency(taskId, dependencyId, authHeader);
   }
 }

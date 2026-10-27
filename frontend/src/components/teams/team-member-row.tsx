@@ -13,9 +13,9 @@ import {
   removeTeamMember,
   formatTeamError,
 } from '@/lib/api/teams';
-import { userDirectory } from '@/lib/auth/user-directory';
 import {
   Crown,
+  User,
   Trash2,
   Copy,
   Check,
@@ -43,14 +43,8 @@ export function TeamMemberRow({
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const directoryVersion = React.useSyncExternalStore(
-    (cb) => userDirectory.subscribe(cb),
-    () => userDirectory.getVersion(),
-    () => 0,
-  );
 
-  const profile = React.useMemo(() => userDirectory.getUser(member.userId), [member.userId, directoryVersion]);
-  const initials = userDirectory.getInitials(profile.name || profile.email);
+  const initials = member.userId ? member.userId.slice(0, 2).toUpperCase() : 'U';
 
   async function handleRoleChange(newRole: TeamRole) {
     if (newRole === member.role || updatingRole || disabled || !canManage) return;
@@ -89,7 +83,7 @@ export function TeamMemberRow({
   }
 
   return (
-    <div className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-700 transition-colors">
+    <div className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-700 transition-colors">
       <div className="flex items-center gap-3 min-w-0">
         <Avatar
           fallback={initials}
@@ -101,40 +95,41 @@ export function TeamMemberRow({
           )}
         />
         <div className="min-w-0 space-y-0.5">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
-              {profile.name}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-mono font-medium text-slate-900 dark:text-slate-100 truncate max-w-[180px] sm:max-w-[240px]">
+              {member.userId}
             </span>
+            <button
+              type="button"
+              onClick={handleCopyUserId}
+              title="Copy User ID"
+              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors cursor-pointer"
+            >
+              {copied ? (
+                <Check className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
+              ) : (
+                <Copy className="h-3 w-3" />
+              )}
+            </button>
             {member.role === 'TEAM_LEAD' && (
               <Badge
                 variant="outline"
-                className="gap-1 border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300 text-[10px] py-0 px-1.5 font-semibold"
+                className="gap-1 border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300 text-[10px] py-0 px-1.5"
               >
                 <Crown className="h-2.5 w-2.5 text-amber-500" />
-                Team Lead
+                Lead
               </Badge>
             )}
           </div>
-          <div className="text-[11px] text-slate-400 dark:text-slate-500 flex items-center gap-2 flex-wrap">
-            {profile.email ? (
-              <span className="truncate">{profile.email}</span>
-            ) : (
-              <div className="flex items-center gap-1 font-mono text-[10px]">
-                <span className="truncate max-w-[140px]">{member.userId}</span>
-                <button
-                  type="button"
-                  onClick={handleCopyUserId}
-                  title="Copy User ID"
-                  className="text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
-                >
-                  {copied ? (
-                    <Check className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
-                  ) : (
-                    <Copy className="h-3 w-3" />
-                  )}
-                </button>
-              </div>
-            )}
+          <div className="text-[11px] text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+            <User className="h-3 w-3" />
+            <span>
+              Added {new Date(member.createdAt).toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+              })}
+            </span>
           </div>
         </div>
       </div>

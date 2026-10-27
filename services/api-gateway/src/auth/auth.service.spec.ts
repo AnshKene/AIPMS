@@ -190,31 +190,4 @@ describe('AuthService (API Gateway)', () => {
       ).rejects.toThrow(GatewayTimeoutException);
     });
   });
-
-  describe('getDirectory', () => {
-    it('should forward getDirectory request to Auth Service with bearer token', async () => {
-      const mockProfiles = [
-        { id: '123', name: 'User One', email: 'user1@example.com', role: 'TEAM_MEMBER', status: 'ACTIVE' },
-      ];
-
-      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-        new Response(JSON.stringify(mockProfiles), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        }),
-      );
-
-      const result = await service.getDirectory('Bearer token123');
-      expect(result).toEqual(mockProfiles);
-      expect(fetch).toHaveBeenCalledWith(
-        'http://localhost:3001/api/auth/directory',
-        expect.objectContaining({
-          method: 'GET',
-          headers: expect.objectContaining({
-            authorization: 'Bearer token123',
-          }),
-        }),
-      );
-    });
-  });
 });

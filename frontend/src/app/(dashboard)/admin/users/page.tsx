@@ -5,37 +5,63 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { useAuth } from '@/lib/auth/auth-context';
 import { apiClient, ApiError } from '@/lib/api/client';
 import {
+  type Role,
   isDesignatedAdmin,
+  DESIGNATED_ADMIN_EMAIL,
 } from '@/lib/auth/auth-storage';
-import { userDirectory } from '@/lib/auth/user-directory';
-import { authApi } from '@/lib/api/auth';
 import {
+  Users,
+  ShieldCheck,
   User,
   Mail,
+  Loader2,
   CheckCircle2,
   AlertTriangle,
-  ArrowUpDown,
-  Search,
+  ArrowRight,
   Lock,
-  Settings2,
-  UserX,
-  UserCheck,
-  Trash2,
-  Loader2,
-  ShieldCheck,
-  Clock,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Avatar } from '@/components/ui/avatar';
 import { AdminPageHeader } from '@/components/admin/AdminPageHeader';
-import { RoleBadge } from '@/components/common/RoleBadge';
-import { UserRoleDialog, type SystemUser } from '@/components/admin/UserRoleDialog';
-import { DeactivateUserDialog } from '@/components/admin/DeactivateUserDialog';
-import { DeleteUserDialog } from '@/components/admin/DeleteUserDialog';
-import { listProjects, type Project } from '@/lib/api/projects';
+import { AdminFilterBar } from '@/components/admin/AdminFilterBar';
+import { AdminStatusBadge } from '@/components/admin/AdminStatusBadge';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+
+interface SystemUser {
+  id: string;
+  email: string;
+  name: string | null;
+  role: Role;
+  createdAt?: string;
+}
+
+const ROLE_INFO: Record<Role, { label: string; description: string }> = {
+  ADMIN: {
+    label: 'ADMIN',
+    description: `Designated System Administrator (${DESIGNATED_ADMIN_EMAIL}): Global platform administration, user management, system health, and audit access.`,
+  },
+  PROJECT_MANAGER: {
+    label: 'PROJECT MANAGER',
+    description: 'Manage authorized project workflows, tasks, sprints, risks, and report analytics.',
+  },
+  TEAM_MEMBER: {
+    label: 'TEAM MEMBER',
+    description: 'Participate in permitted project execution, task updates, and sprint items.',
+  },
+  VIEWER: {
+    label: 'VIEWER',
+    description: 'Read-only access to authorized projects, dashboards, and reporting metrics.',
+  },
+};
 
 export default function UsersAdminPage() {
   return (
@@ -46,65 +72,46 @@ export default function UsersAdminPage() {
 }
 
 function UsersManagementContent() {
-  const { token, user: currentUser, refreshUser } = useAuth();
+  const { token, user: currentUser, switchRole } = useAuth();
   const [users, setUsers] = React.useState<SystemUser[]>([]);
-  const [projects, setProjects] = React.useState<Project[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [updatingId, setUpdatingId] = React.useState<string | null>(null);
   const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
 
-  // Search, filter, and sort state
+  // Search and Filter states
   const [searchQuery, setSearchQuery] = React.useState('');
   const [roleFilter, setRoleFilter] = React.useState<string>('ALL');
-  const [statusFilter, setStatusFilter] = React.useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
-  const [sortField, setSortField] = React.useState<'name' | 'email' | 'role' | 'status' | 'created'>('name');
-  const [sortDirection, setSortDirection] = React.useState<'asc' | 'desc'>('asc');
 
-  // Modal dialog states
-  const [selectedUserForRole, setSelectedUserForRole] = React.useState<SystemUser | null>(null);
-  const [selectedUserForDeactivate, setSelectedUserForDeactivate] = React.useState<SystemUser | null>(null);
-  const [selectedUserForDelete, setSelectedUserForDelete] = React.useState<SystemUser | null>(null);
-  const [reactivatingUserId, setReactivatingUserId] = React.useState<string | null>(null);
+  // Confirmation Modal state
+  const [pendingRoleChange, setPendingRoleChange] = React.useState<{
+    user: SystemUser;
+    newRole: Role;
+  } | null>(null);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
 
-  const fetchUsers = React.useCallback(
-    async (showRefreshing = false) => {
-      if (showRefreshing) {
-        setIsRefreshing(true);
+  const fetchUsers = React.useCallback(async (showRefreshing = false) => {
+    if (showRefreshing) {
+      setIsRefreshing(true);
+    } else {
+      setIsLoading(true);
+    }
+    setError(null);
+    try {
+      const data = await apiClient.get<SystemUser[]>('auth/users', { token });
+      setUsers(data);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.message);
       } else {
-        setIsLoading(true);
+        setError('Failed to connect to authentication microservice. Please retry.');
       }
-      setError(null);
-      try {
-        const [usersData, projectsData] = await Promise.allSettled([
-          apiClient.get<SystemUser[]>('auth/users', { token }),
-          listProjects({ limit: 100 }),
-        ]);
-
-        if (usersData.status === 'fulfilled') {
-          const list = usersData.value || [];
-          setUsers(list);
-          userDirectory.setAuthoritativeUsers(list);
-        } else {
-          throw usersData.reason;
-        }
-
-        if (projectsData.status === 'fulfilled') {
-          setProjects(projectsData.value.data || []);
-        }
-      } catch (err) {
-        if (err instanceof ApiError) {
-          setError(err.message);
-        } else {
-          setError('Failed to connect to authentication microservice. Please retry.');
-        }
-      } finally {
-        setIsLoading(false);
-        setIsRefreshing(false);
-      }
-    },
-    [token],
-  );
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [token]);
 
   React.useEffect(() => {
     let ignore = false;
@@ -112,19 +119,8 @@ function UsersManagementContent() {
       setIsLoading(true);
       setError(null);
       try {
-        const [usersData, projectsData] = await Promise.allSettled([
-          apiClient.get<SystemUser[]>('auth/users', { token }),
-          listProjects({ limit: 100 }),
-        ]);
-
-        if (!ignore && usersData.status === 'fulfilled') {
-          const list = usersData.value || [];
-          setUsers(list);
-          userDirectory.setAuthoritativeUsers(list);
-        }
-        if (!ignore && projectsData.status === 'fulfilled') {
-          setProjects(projectsData.value.data || []);
-        }
+        const data = await apiClient.get<SystemUser[]>('auth/users', { token });
+        if (!ignore) setUsers(data);
       } catch (err) {
         if (!ignore) {
           setError(
@@ -143,131 +139,105 @@ function UsersManagementContent() {
     };
   }, [token]);
 
-  // Handlers for role update
-  const handleRoleUpdateSuccess = (updatedUser: SystemUser) => {
-    setUsers((prev) =>
-      prev.map((u) => (u.id === updatedUser.id ? { ...u, role: updatedUser.role } : u)),
-    );
-    userDirectory.updateUser({ id: updatedUser.id, role: updatedUser.role });
-    void userDirectory.fetchDirectory(token);
-
-    if (currentUser && currentUser.email.toLowerCase() === updatedUser.email.toLowerCase()) {
-      void refreshUser();
+  const handleInitiateRoleChange = (user: SystemUser, newRole: Role) => {
+    if (user.role === newRole) return;
+    if (isDesignatedAdmin(user)) {
+      setError('The designated System Administrator account cannot be modified or demoted.');
+      return;
     }
-
-    setSuccessMessage(
-      `Role for ${updatedUser.name || updatedUser.email} successfully updated to ${updatedUser.role}.`,
-    );
-    setTimeout(() => setSuccessMessage(null), 5000);
+    if (newRole === 'ADMIN') {
+      setError('The ADMIN role is exclusively reserved for the designated System Administrator.');
+      return;
+    }
+    setPendingRoleChange({ user, newRole });
   };
 
-  // Handler for reactivation
-  const handleReactivate = async (targetUser: SystemUser) => {
-    setReactivatingUserId(targetUser.id);
+  const handleConfirmRoleChange = async () => {
+    if (!pendingRoleChange) return;
+
+    const { user, newRole } = pendingRoleChange;
+
+    if (isDesignatedAdmin(user)) {
+      setError('Action Denied: The designated System Administrator account cannot be modified or demoted.');
+      setPendingRoleChange(null);
+      return;
+    }
+
+    if (newRole === 'ADMIN') {
+      setError('Action Denied: Role ADMIN cannot be assigned. Only the designated System Administrator is permitted.');
+      setPendingRoleChange(null);
+      return;
+    }
+
+    setIsSubmitting(true);
+    setUpdatingId(user.id);
     setError(null);
 
+    const previousRole = user.role;
+
     try {
-      await authApi.reactivateUser(targetUser.id, token);
-      const updatedUser: SystemUser = {
-        ...targetUser,
-        status: 'ACTIVE',
-        deactivatedAt: null,
-      };
-      setUsers((prev) => prev.map((u) => (u.id === targetUser.id ? updatedUser : u)));
-      userDirectory.updateUser(updatedUser);
-      void userDirectory.fetchDirectory(token);
-      setSuccessMessage(`Account for ${targetUser.name || targetUser.email} has been reactivated successfully.`);
+      const updatedUser = await apiClient.patch<SystemUser>(
+        `auth/users/${user.id}/role`,
+        { role: newRole },
+        { token },
+      );
+
+      setUsers((prev) =>
+        prev.map((u) => (u.id === user.id ? { ...u, role: updatedUser.role } : u)),
+      );
+
+      if (currentUser && currentUser.email.toLowerCase() === user.email.toLowerCase()) {
+        switchRole(newRole);
+      }
+
+      setSuccessMessage(
+        `Role for ${user.name || user.email} successfully updated to ${ROLE_INFO[newRole].label}.`,
+      );
       setTimeout(() => setSuccessMessage(null), 5000);
+      setPendingRoleChange(null);
     } catch (err) {
+      setUsers((prev) =>
+        prev.map((u) => (u.id === user.id ? { ...u, role: previousRole } : u)),
+      );
+
       if (err instanceof ApiError) {
         setError(err.message);
       } else {
-        setError('Failed to reactivate account. Please verify network connectivity.');
+        setError('Role update request failed. Persisted role has been restored.');
       }
     } finally {
-      setReactivatingUserId(null);
+      setIsSubmitting(false);
+      setUpdatingId(null);
     }
   };
 
-  // Handler for deactivation success
-  const handleDeactivateSuccess = (updatedUser: SystemUser) => {
-    setUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
-    userDirectory.updateUser(updatedUser);
-    void userDirectory.fetchDirectory(token);
-    setSuccessMessage(`Account for ${updatedUser.name || updatedUser.email} has been deactivated.`);
-    setTimeout(() => setSuccessMessage(null), 5000);
-  };
-
-  // Handler for permanent deletion success
-  const handleDeleteSuccess = (deletedUserId: string) => {
-    setUsers((prev) => prev.filter((u) => u.id !== deletedUserId));
-    userDirectory.removeUser(deletedUserId);
-    void userDirectory.fetchDirectory(token);
-    setSuccessMessage('User account and identities permanently deleted successfully.');
-    setTimeout(() => setSuccessMessage(null), 5000);
-  };
-
-  // Toggle sort field or direction
-  const handleSort = (field: 'name' | 'email' | 'role' | 'status' | 'created') => {
-    if (sortField === field) {
-      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSortField(field);
-      setSortDirection('asc');
-    }
-  };
-
-  const filteredAndSortedUsers = React.useMemo(() => {
-    const filtered = users.filter((u) => {
-      const q = searchQuery.trim().toLowerCase();
+  const filteredUsers = React.useMemo(() => {
+    return users.filter((u) => {
       const matchesSearch =
-        q === '' ||
-        (u.name && u.name.toLowerCase().includes(q)) ||
-        u.email.toLowerCase().includes(q) ||
-        u.id.toLowerCase().includes(q);
+        searchQuery.trim() === '' ||
+        (u.name && u.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        u.email.toLowerCase().includes(searchQuery.toLowerCase());
 
       const matchesRole = roleFilter === 'ALL' || u.role === roleFilter;
 
-      const userStatus = u.status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE';
-      const matchesStatus = statusFilter === 'ALL' || userStatus === statusFilter;
-
-      return matchesSearch && matchesRole && matchesStatus;
+      return matchesSearch && matchesRole;
     });
+  }, [users, searchQuery, roleFilter]);
 
-    return filtered.sort((a, b) => {
-      let comparison = 0;
-      if (sortField === 'name') {
-        comparison = (a.name || a.email).localeCompare(b.name || b.email);
-      } else if (sortField === 'email') {
-        comparison = a.email.localeCompare(b.email);
-      } else if (sortField === 'role') {
-        comparison = a.role.localeCompare(b.role);
-      } else if (sortField === 'status') {
-        comparison = (a.status || 'ACTIVE').localeCompare(b.status || 'ACTIVE');
-      } else if (sortField === 'created') {
-        comparison = (a.createdAt || '').localeCompare(b.createdAt || '');
-      }
-      return sortDirection === 'asc' ? comparison : -comparison;
-    });
-  }, [users, searchQuery, roleFilter, statusFilter, sortField, sortDirection]);
-
-  // Count projects owned by user
-  const getUserOwnedProjects = (userId: string) => {
-    return projects.filter((p) => p.ownerId === userId);
-  };
-
-  const activeCount = users.filter((u) => u.status !== 'INACTIVE').length;
-  const inactiveCount = users.filter((u) => u.status === 'INACTIVE').length;
+  const isSelfChange =
+    pendingRoleChange &&
+    currentUser &&
+    currentUser.email.toLowerCase() === pendingRoleChange.user.email.toLowerCase();
 
   return (
-    <div className="space-y-5 pb-12">
-      {/* Header */}
+    <div className="space-y-6 pb-8">
+      {/* Page Header */}
       <AdminPageHeader
-        title="User & Lifecycle Governance"
-        description="Inspect registered system accounts, manage RBAC privileges, enforce account deactivation, and execute permanent deletions with referential integrity."
+        title="Users & Access Management"
+        description="View registered workspace accounts, inspect platform permissions, and manage authoritative administrator and team roles."
         breadcrumbs={[
           { label: 'Administration', href: '/admin/overview' },
-          { label: 'Users & Lifecycle' },
+          { label: 'Users & Access' },
         ]}
         onRefresh={() => fetchUsers(true)}
         isRefreshing={isRefreshing}
@@ -277,10 +247,10 @@ function UsersManagementContent() {
 
       {/* Success Notification Alert */}
       {successMessage && (
-        <Card className="border-emerald-200 dark:border-emerald-900 bg-emerald-50/80 dark:bg-emerald-950/40 p-3.5 rounded-xl shadow-xs">
-          <div className="flex items-center gap-2.5">
-            <CheckCircle2 className="h-4.5 w-4.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-            <p className="text-xs font-semibold text-emerald-900 dark:text-emerald-200 flex-1">
+        <Card className="border-emerald-200 dark:border-emerald-900 bg-emerald-50/70 dark:bg-emerald-950/40 p-4">
+          <div className="flex items-center gap-3">
+            <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-200 flex-1">
               {successMessage}
             </p>
           </div>
@@ -289,11 +259,11 @@ function UsersManagementContent() {
 
       {/* Error Alert */}
       {error && (
-        <Card className="border-rose-200 dark:border-rose-900 bg-rose-50/80 dark:bg-rose-950/40 p-3.5 rounded-xl">
-          <div className="flex items-start gap-2.5">
-            <AlertTriangle className="h-4.5 w-4.5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
-            <div className="space-y-0.5 flex-1">
-              <h4 className="text-xs font-bold text-rose-900 dark:text-rose-200">
+        <Card className="border-rose-200 dark:border-rose-900 bg-rose-50/70 dark:bg-rose-950/40 p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+            <div className="space-y-1 flex-1">
+              <h4 className="text-sm font-bold text-rose-900 dark:text-rose-200">
                 Action Error
               </h4>
               <p className="text-xs text-rose-700 dark:text-rose-300">{error}</p>
@@ -302,7 +272,7 @@ function UsersManagementContent() {
               variant="outline"
               size="sm"
               onClick={() => fetchUsers()}
-              className="shrink-0 text-xs h-7 border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200"
+              className="shrink-0 text-xs border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200"
             >
               Retry
             </Button>
@@ -310,378 +280,363 @@ function UsersManagementContent() {
         </Card>
       )}
 
-      {/* Compact Metrics Bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-        <div className="p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900/60 flex items-center justify-between">
-          <span className="text-xs text-slate-500 font-medium">Total Accounts</span>
-          <span className="text-sm font-bold text-slate-900 dark:text-slate-100">{users.length}</span>
-        </div>
-        <div className="p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900/60 flex items-center justify-between">
-          <span className="text-xs text-slate-500 font-medium">Active Accounts</span>
-          <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
-            {activeCount}
-          </span>
-        </div>
-        <div className="p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900/60 flex items-center justify-between">
-          <span className="text-xs text-slate-500 font-medium">Inactive / Suspended</span>
-          <span className="text-sm font-bold text-amber-600 dark:text-amber-400">
-            {inactiveCount}
-          </span>
-        </div>
-        <div className="p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900/60 flex items-center justify-between">
-          <span className="text-xs text-slate-500 font-medium">Admins</span>
-          <span className="text-sm font-bold text-purple-600 dark:text-purple-400">
-            {users.filter((u) => u.role === 'ADMIN').length}
-          </span>
-        </div>
-        <div className="p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900/60 flex items-center justify-between">
-          <span className="text-xs text-slate-500 font-medium">Project Managers</span>
-          <span className="text-sm font-bold text-blue-600 dark:text-blue-400">
-            {users.filter((u) => u.role === 'PROJECT_MANAGER').length}
-          </span>
-        </div>
-        <div className="p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900/60 flex items-center justify-between">
-          <span className="text-xs text-slate-500 font-medium">Team Members</span>
-          <span className="text-sm font-bold text-teal-600 dark:text-teal-400">
-            {users.filter((u) => u.role === 'TEAM_MEMBER').length}
-          </span>
-        </div>
+      {/* Filter and Search Bar */}
+      <AdminFilterBar
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="Search by user name or email address..."
+        selectFilter={{
+          value: roleFilter,
+          onChange: setRoleFilter,
+          options: [
+            { label: 'All Roles', value: 'ALL' },
+            { label: 'ADMIN', value: 'ADMIN' },
+            { label: 'PROJECT MANAGER', value: 'PROJECT_MANAGER' },
+            { label: 'TEAM MEMBER', value: 'TEAM_MEMBER' },
+            { label: 'VIEWER', value: 'VIEWER' },
+          ],
+        }}
+        totalCount={users.length}
+        filteredCount={filteredUsers.length}
+        onReset={() => {
+          setSearchQuery('');
+          setRoleFilter('ALL');
+        }}
+      />
+
+      {/* Role Descriptions Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {(Object.keys(ROLE_INFO) as Role[]).map((r) => {
+          const count = users.filter((u) => u.role === r).length;
+          return (
+            <Card
+              key={r}
+              className="p-3.5 space-y-2 border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900/60"
+            >
+              <div className="flex items-center justify-between">
+                <AdminStatusBadge status={r} />
+                <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                  {count} {count === 1 ? 'user' : 'users'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
+                {ROLE_INFO[r].description}
+              </p>
+            </Card>
+          );
+        })}
       </div>
 
-      {/* Main Table Card */}
-      <Card className="border-slate-200/80 dark:border-slate-800 overflow-hidden shadow-xs">
-        {/* Filter and Control Bar */}
-        <div className="p-4 border-b border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/40 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="relative w-full sm:w-80">
-            <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search by name, email, or UUID..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full h-8.5 pl-8.5 pr-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-purple-500"
-            />
+      {/* Users Data Section */}
+      <Card className="p-5 space-y-4 border-slate-200/80 dark:border-slate-800">
+        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+          <div className="flex items-center gap-2">
+            <Users className="h-4.5 w-4.5 text-purple-600 dark:text-purple-400" />
+            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+              Registered System Accounts
+            </h3>
           </div>
-
-          <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
-            {/* Status Filter */}
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as 'ALL' | 'ACTIVE' | 'INACTIVE')}
-              className="h-8.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-purple-500 cursor-pointer"
-            >
-              <option value="ALL">All Statuses ({users.length})</option>
-              <option value="ACTIVE">Active ({activeCount})</option>
-              <option value="INACTIVE">Inactive / Suspended ({inactiveCount})</option>
-            </select>
-
-            {/* Role Filter */}
-            <select
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value)}
-              className="h-8.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-purple-500 cursor-pointer"
-            >
-              <option value="ALL">All Roles ({users.length})</option>
-              <option value="ADMIN">ADMIN</option>
-              <option value="PROJECT_OWNER">PROJECT OWNER</option>
-              <option value="PROJECT_MANAGER">PROJECT MANAGER</option>
-              <option value="TEAM_MEMBER">TEAM MEMBER</option>
-              <option value="VIEWER">VIEWER</option>
-            </select>
-
-            {(searchQuery || roleFilter !== 'ALL' || statusFilter !== 'ALL') && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setSearchQuery('');
-                  setRoleFilter('ALL');
-                  setStatusFilter('ALL');
-                }}
-                className="h-8.5 text-xs text-slate-500 hover:text-slate-900"
-              >
-                Reset
-              </Button>
-            )}
-          </div>
+          <span className="text-xs text-slate-400">
+            {filteredUsers.length} matching records
+          </span>
         </div>
 
-        {/* Table Content */}
         {isLoading ? (
-          <div className="p-6 space-y-3">
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
+          <div className="space-y-3 py-4">
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
           </div>
-        ) : filteredAndSortedUsers.length === 0 ? (
-          <div className="py-16 text-center space-y-2">
-            <User className="h-8 w-8 text-slate-300 dark:text-slate-600 mx-auto" />
-            <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-              No matching users found
+        ) : filteredUsers.length === 0 ? (
+          <div className="py-12 text-center space-y-3">
+            <User className="h-10 w-10 text-slate-300 dark:text-slate-600 mx-auto" />
+            <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
+              No users match your criteria
             </p>
-            <p className="text-[11px] text-slate-400">
-              Adjust search keywords or clear filters to see all accounts.
+            <p className="text-xs text-slate-400">
+              Try clearing search terms or selecting another role filter.
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-100 dark:border-slate-800">
-                <tr>
-                  <th
-                    className="py-3 px-4 cursor-pointer hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
-                    onClick={() => handleSort('name')}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span>User</span>
-                      <ArrowUpDown className="h-3 w-3" />
-                    </div>
-                  </th>
-                  <th
-                    className="py-3 px-4 cursor-pointer hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
-                    onClick={() => handleSort('email')}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span>Email</span>
-                      <ArrowUpDown className="h-3 w-3" />
-                    </div>
-                  </th>
-                  <th
-                    className="py-3 px-4 cursor-pointer hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
-                    onClick={() => handleSort('role')}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span>Global Role</span>
-                      <ArrowUpDown className="h-3 w-3" />
-                    </div>
-                  </th>
-                  <th className="py-3 px-4">Workspaces Owned</th>
-                  <th
-                    className="py-3 px-4 cursor-pointer hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
-                    onClick={() => handleSort('status')}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span>Status</span>
-                      <ArrowUpDown className="h-3 w-3" />
-                    </div>
-                  </th>
-                  <th className="py-3 px-4 text-right">Lifecycle Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {filteredAndSortedUsers.map((u) => {
-                  const isCurrentUser = Boolean(
-                    currentUser && currentUser.email.toLowerCase() === u.email.toLowerCase(),
-                  );
-                  const isUserDesignatedAdmin = isDesignatedAdmin(u);
-                  const userOwnedProjects = getUserOwnedProjects(u.id);
-                  const isInactive = u.status === 'INACTIVE';
-                  const isReactivating = reactivatingUserId === u.id;
+          <>
+            {/* Desktop Table View (>= 640px) */}
+            <div className="hidden sm:block overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-100 dark:border-slate-800">
+                  <tr>
+                    <th className="py-3 px-3">User Profile</th>
+                    <th className="py-3 px-3">Email Address</th>
+                    <th className="py-3 px-3">Current Role</th>
+                    <th className="py-3 px-3">Assigned Role</th>
+                    <th className="py-3 px-3 text-right">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {filteredUsers.map((u) => {
+                    const isUpdating = updatingId === u.id;
+                    const isCurrentUser =
+                      currentUser && currentUser.email.toLowerCase() === u.email.toLowerCase();
+                    const isUserDesignatedAdmin = isDesignatedAdmin(u);
 
-                  return (
-                    <tr
-                      key={u.id}
-                      className={`hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors group ${
-                        isInactive ? 'bg-slate-50/40 dark:bg-slate-900/20 opacity-80' : ''
-                      }`}
-                    >
-                      {/* Name & Avatar */}
-                      <td className="py-3 px-4 font-semibold text-slate-900 dark:text-slate-100">
-                        <div className="flex items-center gap-3">
-                          <Avatar
-                            fallback={userDirectory.getInitials(u.name || u.email)}
-                            size="sm"
-                            className="h-8 w-8 text-xs shrink-0"
-                          />
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="truncate">{u.name || 'Unnamed User'}</span>
-                              {isCurrentUser && (
-                                <span className="inline-flex items-center rounded bg-blue-50 dark:bg-blue-950 px-1.5 py-0.2 text-[9px] font-bold text-blue-700 dark:text-blue-300">
-                                  You
-                                </span>
-                              )}
-                              {isUserDesignatedAdmin && (
-                                <span className="inline-flex items-center gap-1 rounded bg-purple-50 dark:bg-purple-950 px-1.5 py-0.2 text-[9px] font-bold text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
-                                  <Lock className="h-2.5 w-2.5" />
-                                  Admin
-                                </span>
-                              )}
+                    return (
+                      <tr
+                        key={u.id}
+                        className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
+                      >
+                        <td className="py-3 px-3 font-semibold text-slate-900 dark:text-slate-100">
+                          <div className="flex items-center gap-2.5">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300 font-bold text-xs shrink-0">
+                              {(u.name || u.email).slice(0, 2).toUpperCase()}
                             </div>
-                            <span className="font-mono text-[10px] text-slate-400 select-all block truncate max-w-[180px]">
-                              {u.id}
-                            </span>
+                            <div>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span>{u.name || 'Unnamed User'}</span>
+                                {isCurrentUser && (
+                                  <span className="inline-flex items-center rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                                    You
+                                  </span>
+                                )}
+                                {isUserDesignatedAdmin && (
+                                  <span className="inline-flex items-center gap-1 rounded bg-purple-50 px-1.5 py-0.5 text-[10px] font-bold text-purple-700 dark:bg-purple-950 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                                    <ShieldCheck className="h-3 w-3 text-purple-600 dark:text-purple-400" />
+                                    Designated Admin
+                                  </span>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      {/* Email */}
-                      <td className="py-3 px-4 text-slate-600 dark:text-slate-300">
-                        <div className="flex items-center gap-1.5">
-                          <Mail className="h-3 w-3 text-slate-400 shrink-0" />
+                        <td className="py-3 px-3 text-slate-600 dark:text-slate-300">
+                          <div className="flex items-center gap-1.5">
+                            <Mail className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                            <a
+                              href={`mailto:${u.email}`}
+                              className="hover:text-blue-600 dark:hover:text-blue-400 hover:underline transition-colors"
+                              title={`Send email to ${u.email}`}
+                            >
+                              {u.email}
+                            </a>
+                          </div>
+                        </td>
+
+                        <td className="py-3 px-3">
+                          <AdminStatusBadge status={u.role} />
+                        </td>
+
+                        <td className="py-3 px-3">
+                          {isUserDesignatedAdmin ? (
+                            <div className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md border border-purple-200 dark:border-purple-900 bg-purple-50/70 dark:bg-purple-950/40 text-purple-800 dark:text-purple-300 text-xs font-semibold">
+                              <Lock className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
+                              <span>System Admin (Protected)</span>
+                            </div>
+                          ) : (
+                            <select
+                              value={u.role}
+                              disabled={isUpdating}
+                              onChange={(e) =>
+                                handleInitiateRoleChange(u, e.target.value as Role)
+                              }
+                              className="h-8 rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer disabled:opacity-50"
+                            >
+                              <option value="PROJECT_MANAGER">PROJECT MANAGER</option>
+                              <option value="TEAM_MEMBER">TEAM MEMBER</option>
+                              <option value="VIEWER">VIEWER</option>
+                            </select>
+                          )}
+                        </td>
+
+                        <td className="py-3 px-3 text-right">
+                          {isUpdating ? (
+                            <div className="inline-flex items-center gap-1.5 text-purple-600 dark:text-purple-400 font-semibold text-xs">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              <span>Updating...</span>
+                            </div>
+                          ) : isUserDesignatedAdmin ? (
+                            <Badge variant="outline" className="text-[10px] bg-purple-50/50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-400 border-purple-200 dark:border-purple-800">
+                              System Owner
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-[10px] bg-emerald-50/50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
+                              Active
+                            </Badge>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Card Layout (< 640px) */}
+            <div className="sm:hidden space-y-3">
+              {filteredUsers.map((u) => {
+                const isUpdating = updatingId === u.id;
+                const isCurrentUser =
+                  currentUser && currentUser.email.toLowerCase() === u.email.toLowerCase();
+                const isUserDesignatedAdmin = isDesignatedAdmin(u);
+
+                return (
+                  <Card key={u.id} className="p-4 space-y-3 border-slate-200/80 dark:border-slate-800">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-100 text-purple-700 dark:bg-purple-950 text-xs font-bold">
+                          {(u.name || u.email).slice(0, 2).toUpperCase()}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                              {u.name || 'Unnamed User'}
+                            </h4>
+                            {isUserDesignatedAdmin && (
+                              <Badge className="bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300 text-[10px]">
+                                Designated Admin
+                              </Badge>
+                            )}
+                          </div>
                           <a
                             href={`mailto:${u.email}`}
-                            className="hover:text-purple-600 dark:hover:text-purple-400 hover:underline transition-colors truncate"
+                            className="text-xs text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 hover:underline transition-colors block truncate"
+                            title={`Send email to ${u.email}`}
                           >
                             {u.email}
                           </a>
                         </div>
-                      </td>
+                      </div>
+                      {isCurrentUser && (
+                        <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 text-[10px]">
+                          You
+                        </Badge>
+                      )}
+                    </div>
 
-                      {/* Global Role */}
-                      <td className="py-3 px-4">
-                        <RoleBadge role={u.role} size="sm" />
-                      </td>
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+                      <AdminStatusBadge status={u.role} />
 
-                      {/* Workspaces Owned */}
-                      <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
-                        {userOwnedProjects.length > 0 ? (
-                          <span className="font-semibold text-slate-900 dark:text-slate-200">
-                            {userOwnedProjects.length} {userOwnedProjects.length === 1 ? 'project' : 'projects'}
-                          </span>
-                        ) : (
-                          <span className="text-slate-400 text-[11px]">0 projects</span>
-                        )}
-                      </td>
-
-                      {/* Account Status */}
-                      <td className="py-3 px-4">
-                        {isUserDesignatedAdmin ? (
-                          <Badge
-                            variant="outline"
-                            className="text-[10px] bg-purple-50/50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-400 border-purple-200 dark:border-purple-800 font-semibold gap-1"
-                          >
-                            <ShieldCheck className="h-3 w-3" />
-                            System Owner
-                          </Badge>
-                        ) : isInactive ? (
-                          <div className="space-y-0.5">
-                            <Badge
-                              variant="outline"
-                              className="text-[10px] bg-amber-50/60 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400 border-amber-200 dark:border-amber-800 font-semibold gap-1"
-                            >
-                              <Clock className="h-3 w-3" />
-                              Inactive
-                            </Badge>
-                            {u.deactivatedAt && (
-                              <span className="block text-[9px] text-slate-400">
-                                {new Date(u.deactivatedAt).toLocaleDateString()}
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <Badge
-                            variant="outline"
-                            className="text-[10px] bg-emerald-50/50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800 font-semibold gap-1"
-                          >
-                            <CheckCircle2 className="h-3 w-3" />
-                            Active
-                          </Badge>
-                        )}
-                      </td>
-
-                      {/* Actions */}
-                      <td className="py-3 px-4 text-right">
-                        {isUserDesignatedAdmin ? (
-                          <span className="text-[11px] text-slate-400 italic font-medium">Protected System Admin</span>
-                        ) : (
-                          <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                            {/* Manage Role */}
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setSelectedUserForRole(u)}
-                              className="h-7 text-xs gap-1 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:text-purple-600 hover:border-purple-300 dark:hover:border-purple-700"
-                            >
-                              <Settings2 className="h-3 w-3" />
-                              Role
-                            </Button>
-
-                            {/* Inactive user actions: Reactivate & Delete */}
-                            {isInactive ? (
-                              <>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleReactivate(u)}
-                                  disabled={isReactivating}
-                                  className="h-7 text-xs gap-1 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/50"
-                                >
-                                  {isReactivating ? (
-                                    <Loader2 className="h-3 w-3 animate-spin" />
-                                  ) : (
-                                    <UserCheck className="h-3 w-3" />
-                                  )}
-                                  Reactivate
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => setSelectedUserForDelete(u)}
-                                  className="h-7 text-xs gap-1 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/50 hover:border-red-300"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                  Delete
-                                </Button>
-                              </>
-                            ) : (
-                              /* Active user actions: Deactivate */
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setSelectedUserForDeactivate(u)}
-                                disabled={isCurrentUser}
-                                title={isCurrentUser ? 'Cannot deactivate your own active account' : 'Deactivate user account'}
-                                className="h-7 text-xs gap-1 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/50 hover:border-amber-300 disabled:opacity-40"
-                              >
-                                <UserX className="h-3 w-3" />
-                                Deactivate
-                              </Button>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                      {isUserDesignatedAdmin ? (
+                        <div className="inline-flex items-center gap-1.5 h-8 px-2 rounded-md border border-purple-200 dark:border-purple-900 bg-purple-50/70 dark:bg-purple-950/40 text-purple-800 dark:text-purple-300 text-xs font-semibold">
+                          <Lock className="h-3 w-3 text-purple-600 dark:text-purple-400 shrink-0" />
+                          <span>Protected Admin</span>
+                        </div>
+                      ) : (
+                        <select
+                          value={u.role}
+                          disabled={isUpdating}
+                          onChange={(e) =>
+                            handleInitiateRoleChange(u, e.target.value as Role)
+                          }
+                          className="h-8 rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-purple-500 cursor-pointer"
+                        >
+                          <option value="PROJECT_MANAGER">PROJECT MANAGER</option>
+                          <option value="TEAM_MEMBER">TEAM MEMBER</option>
+                          <option value="VIEWER">VIEWER</option>
+                        </select>
+                      )}
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          </>
         )}
-
-        {/* Footer Info */}
-        <div className="p-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/30 flex items-center justify-between text-xs text-slate-400">
-          <span>Showing {filteredAndSortedUsers.length} of {users.length} accounts</span>
-          <span className="text-[11px]">Backend RLS, Session Revocation & Multi-tier Lifecycle Enforced</span>
-        </div>
       </Card>
 
-      {/* Role Management Dialog */}
-      <UserRoleDialog
-        user={selectedUserForRole}
-        open={Boolean(selectedUserForRole)}
-        onOpenChange={(open) => !open && setSelectedUserForRole(null)}
-        onSuccess={handleRoleUpdateSuccess}
-      />
+      {/* Confirmation Dialog Modal */}
+      <Dialog open={!!pendingRoleChange} onOpenChange={(open) => !open && setPendingRoleChange(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+              Confirm Privilege & Role Modification
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Review permission changes before applying role updates to the backend.
+            </DialogDescription>
+          </DialogHeader>
 
-      {/* Deactivate User Dialog */}
-      <DeactivateUserDialog
-        user={selectedUserForDeactivate}
-        ownedProjects={selectedUserForDeactivate ? getUserOwnedProjects(selectedUserForDeactivate.id) : []}
-        open={Boolean(selectedUserForDeactivate)}
-        onOpenChange={(open) => !open && setSelectedUserForDeactivate(null)}
-        onSuccess={handleDeactivateSuccess}
-      />
+          {pendingRoleChange && (
+            <div className="space-y-4 py-2 text-xs">
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase">Target User</span>
+                <p className="font-bold text-slate-900 dark:text-slate-100 text-sm">
+                  {pendingRoleChange.user.name || pendingRoleChange.user.email}
+                </p>
+                <a
+                  href={`mailto:${pendingRoleChange.user.email}`}
+                  className="text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 hover:underline font-mono text-[11px] block transition-colors"
+                  title={`Send email to ${pendingRoleChange.user.email}`}
+                >
+                  {pendingRoleChange.user.email}
+                </a>
+              </div>
 
-      {/* Permanently Delete User Dialog */}
-      <DeleteUserDialog
-        user={selectedUserForDelete}
-        ownedProjects={selectedUserForDelete ? getUserOwnedProjects(selectedUserForDelete.id) : []}
-        open={Boolean(selectedUserForDelete)}
-        onOpenChange={(open) => !open && setSelectedUserForDelete(null)}
-        onSuccess={handleDeleteSuccess}
-      />
+              <div className="flex items-center justify-between p-3 rounded-xl border border-slate-200/80 dark:border-slate-800">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">Current Role</span>
+                  <div>
+                    <AdminStatusBadge status={pendingRoleChange.user.role} />
+                  </div>
+                </div>
+                <ArrowRight className="h-4 w-4 text-slate-400 shrink-0" />
+                <div className="space-y-1 text-right">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">Proposed Role</span>
+                  <div>
+                    <AdminStatusBadge status={pendingRoleChange.newRole} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-blue-50/70 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200 space-y-1">
+                <span className="font-bold block">Permission Impact</span>
+                <p className="text-[11px] text-blue-700 dark:text-blue-300 leading-snug">
+                  {ROLE_INFO[pendingRoleChange.newRole].description}
+                </p>
+              </div>
+
+              {isSelfChange && (
+                <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold text-amber-800 dark:text-amber-300">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    <span>Active Session Warning</span>
+                  </div>
+                  <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-snug">
+                    You are modifying your own active administrative account role. Your platform access rights will take effect immediately upon server confirmation.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setPendingRoleChange(null)}
+              disabled={isSubmitting}
+              className="text-xs"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleConfirmRoleChange}
+              disabled={isSubmitting || (pendingRoleChange ? isDesignatedAdmin(pendingRoleChange.user) || pendingRoleChange.newRole === 'ADMIN' : false)}
+              className="bg-purple-600 hover:bg-purple-700 text-white text-xs gap-1.5"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span>Saving to Server...</span>
+                </>
+              ) : (
+                <span>Confirm Role Change</span>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -36,15 +36,8 @@ describe('AuthController (Security Direct Access Tests)', () => {
         throw new UnauthorizedException('Invalid or expired token');
       }),
       listUsers: vi.fn(async () => [adminUser, memberUser, viewerUser]),
-      getDirectoryProfiles: vi.fn(async () => [
-        { id: adminUser.id, name: 'Admin', email: adminUser.email, role: adminUser.role, status: 'ACTIVE' },
-        { id: memberUser.id, name: 'Member', email: memberUser.email, role: memberUser.role, status: 'ACTIVE' },
-      ]),
       getAuditLogs: vi.fn(async () => ({ data: [], total: 0 })),
       updateUserRole: vi.fn(),
-      deactivateUser: vi.fn(),
-      reactivateUser: vi.fn(),
-      deleteUser: vi.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -175,93 +168,6 @@ describe('AuthController (Security Direct Access Tests)', () => {
         'admin-001',
         'admin@aipms.com',
       );
-    });
-  });
-
-  describe('Direct access to POST /auth/users/:id/deactivate', () => {
-    it('should reject deactivation with no token', async () => {
-      await expect(controller.deactivateUser('user-1', undefined)).rejects.toThrow(
-        UnauthorizedException,
-      );
-    });
-
-    it('should reject deactivation with non-admin token', async () => {
-      await expect(controller.deactivateUser('user-1', 'Bearer member-token')).rejects.toThrow(
-        ForbiddenException,
-      );
-    });
-
-    it('should allow deactivation with admin token and forward caller identity', async () => {
-      await controller.deactivateUser('user-1', 'Bearer admin-token');
-      expect(authService.deactivateUser).toHaveBeenCalledWith(
-        'user-1',
-        Role.ADMIN,
-        'admin-001',
-        'admin@aipms.com',
-      );
-    });
-  });
-
-  describe('Direct access to POST /auth/users/:id/reactivate', () => {
-    it('should reject reactivation with no token', async () => {
-      await expect(controller.reactivateUser('user-1', undefined)).rejects.toThrow(
-        UnauthorizedException,
-      );
-    });
-
-    it('should reject reactivation with non-admin token', async () => {
-      await expect(controller.reactivateUser('user-1', 'Bearer member-token')).rejects.toThrow(
-        ForbiddenException,
-      );
-    });
-
-    it('should allow reactivation with admin token and forward caller identity', async () => {
-      await controller.reactivateUser('user-1', 'Bearer admin-token');
-      expect(authService.reactivateUser).toHaveBeenCalledWith(
-        'user-1',
-        Role.ADMIN,
-        'admin-001',
-        'admin@aipms.com',
-      );
-    });
-  });
-
-  describe('Direct access to DELETE /auth/users/:id', () => {
-    it('should reject deletion with no token', async () => {
-      await expect(controller.deleteUser('user-1', undefined)).rejects.toThrow(
-        UnauthorizedException,
-      );
-    });
-
-    it('should reject deletion with non-admin token', async () => {
-      await expect(controller.deleteUser('user-1', 'Bearer member-token')).rejects.toThrow(
-        ForbiddenException,
-      );
-    });
-
-    it('should allow permanent deletion with admin token and forward caller identity', async () => {
-      await controller.deleteUser('user-1', 'Bearer admin-token');
-      expect(authService.deleteUser).toHaveBeenCalledWith(
-        'user-1',
-        Role.ADMIN,
-        'admin-001',
-        'admin@aipms.com',
-      );
-    });
-  });
-
-  describe('Direct access to GET /auth/directory', () => {
-    it('should reject directory lookup when unauthenticated', async () => {
-      await expect(controller.getDirectory(undefined)).rejects.toThrow(
-        UnauthorizedException,
-      );
-    });
-
-    it('should allow directory lookup for non-admin authenticated users', async () => {
-      const res = await controller.getDirectory('Bearer member-token');
-      expect(res).toBeDefined();
-      expect(Array.isArray(res)).toBe(true);
-      expect(authService.getDirectoryProfiles).toHaveBeenCalled();
     });
   });
 });

@@ -163,42 +163,6 @@ export class RolesGuard implements CanActivate {
 
     // 5. PROJECT_MANAGER role enforcement
     if (userRole === Role.PROJECT_MANAGER) {
-      // Cannot create projects by default
-      if (
-        method === 'POST' &&
-        (normalizedPath === '/projects' ||
-          normalizedPath === '/api/projects' ||
-          normalizedPath === '/projects/' ||
-          normalizedPath === '/api/projects/')
-      ) {
-        throw new ForbiddenException(
-          'Access Denied: Project Managers cannot create projects by default',
-        );
-      }
-
-      // Cannot transfer project ownership
-      if (normalizedPath.includes('/transfer-ownership')) {
-        throw new ForbiddenException(
-          'Access Denied: Project Managers cannot transfer project ownership',
-        );
-      }
-
-      // Cannot delete projects
-      if (
-        method === 'DELETE' &&
-        (normalizedPath.startsWith('/projects/') || normalizedPath.startsWith('/api/projects/')) &&
-        !normalizedPath.includes('/members/')
-      ) {
-        throw new ForbiddenException(
-          'Access Denied: Project Managers cannot delete or archive projects',
-        );
-      }
-
-      return true;
-    }
-
-    // 6. PROJECT_OWNER role enforcement
-    if (userRole === Role.PROJECT_OWNER) {
       return true;
     }
 

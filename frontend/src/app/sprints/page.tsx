@@ -45,7 +45,7 @@ function SprintsPageContent() {
   const initialProjectId = searchParams.get('projectId') || '';
 
   const { user } = useAuth();
-  const canManage = user?.role === 'ADMIN' || user?.role === 'PROJECT_OWNER' || user?.role === 'PROJECT_MANAGER';
+  const canManage = user?.role === 'ADMIN' || user?.role === 'PROJECT_MANAGER';
 
   const [sprints, setSprints] = React.useState<Sprint[]>([]);
   const [projects, setProjects] = React.useState<Project[]>([]);

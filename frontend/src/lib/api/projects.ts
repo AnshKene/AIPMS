@@ -109,37 +109,3 @@ export async function transferProjectOwnership(
 ): Promise<Project> {
   return apiClient.post<Project>(`projects/${id}/transfer-ownership`, payload);
 }
-
-export type ProjectMemberRole = 'PROJECT_MANAGER' | 'MEMBER' | 'VIEWER';
-
-export interface ProjectMember {
-  id: string;
-  projectId: string;
-  userId: string;
-  role: ProjectMemberRole;
-  createdAt: string;
-  createdBy: string | null;
-}
-
-export interface AddProjectMemberPayload {
-  userId: string;
-  role: ProjectMemberRole;
-}
-
-export async function listProjectMembers(projectId: string): Promise<ProjectMember[]> {
-  return apiClient.get<ProjectMember[]>(`projects/${projectId}/members`);
-}
-
-export async function addProjectMember(
-  projectId: string,
-  payload: AddProjectMemberPayload,
-): Promise<ProjectMember> {
-  return apiClient.post<ProjectMember>(`projects/${projectId}/members`, payload);
-}
-
-export async function removeProjectMember(
-  projectId: string,
-  userId: string,
-): Promise<{ success: boolean; message: string }> {
-  return apiClient.delete<{ success: boolean; message: string }>(`projects/${projectId}/members/${userId}`);
-}

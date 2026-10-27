@@ -83,12 +83,6 @@ export default function ResetPasswordPage() {
 
       if (token) {
         setAccessToken(token);
-        // Scrub sensitive recovery token from browser URL address bar to prevent history/referrer leakage
-        try {
-          window.history.replaceState(null, '', window.location.pathname);
-        } catch {
-          // ignore in restricted environments
-        }
       }
       setTokenDetected(true);
     });

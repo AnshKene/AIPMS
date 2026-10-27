@@ -25,35 +25,19 @@ export class ApiError extends Error {
 }
 
 function parseErrorMessage(data: unknown, fallback: string): string {
-  let message = fallback;
   if (data && typeof data === 'object') {
     const errObj = data as Record<string, unknown>;
     if (typeof errObj.message === 'string' && errObj.message.trim().length > 0) {
-      message = errObj.message;
-    } else if (Array.isArray(errObj.message) && errObj.message.length > 0) {
-      message = errObj.message.join(', ');
-    } else if (typeof errObj.error === 'string' && errObj.error.trim().length > 0) {
-      message = errObj.error;
+      return errObj.message;
+    }
+    if (Array.isArray(errObj.message) && errObj.message.length > 0) {
+      return errObj.message.join(', ');
+    }
+    if (typeof errObj.error === 'string' && errObj.error.trim().length > 0) {
+      return errObj.error;
     }
   }
-
-  // Prevent leaking internal infrastructure, SQL syntax, or server stack traces to users
-  if (message) {
-    const lower = message.toLowerCase();
-    if (
-      lower.includes('syntax error at or near') ||
-      lower.includes('pg_') ||
-      lower.includes('violates foreign key constraint') ||
-      lower.includes('relation "') ||
-      lower.includes('connection refused') ||
-      lower.includes('stack trace') ||
-      lower.includes('node:internal')
-    ) {
-      return 'A backend service error occurred. Please contact support or try again later.';
-    }
-  }
-
-  return message;
+  return fallback;
 }
 
 async function request<T = unknown>(

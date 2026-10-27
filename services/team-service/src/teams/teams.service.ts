@@ -1,11 +1,9 @@
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
@@ -19,16 +17,6 @@ import { TeamRole } from './enums/team-role.enum.js';
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-export const DESIGNATED_ADMIN_ID = '66544acc-4e3d-4b3b-b3f3-44971c6a9347';
-export const DESIGNATED_ADMIN_EMAIL = 'admin.ansh@aipms.com';
-
-interface AuthenticatedUser {
-  id: string;
-  role: string;
-  email: string;
-  isAdmin: boolean;
-}
 
 @Injectable()
 export class TeamsService {
@@ -83,65 +71,11 @@ export class TeamsService {
     return this.supabase;
   }
 
-  private async getAuthenticatedUser(
-    authHeader?: string,
-  ): Promise<AuthenticatedUser | null> {
-    if (!authHeader || authHeader.trim().length === 0) {
-      return null;
-    }
-    const client = this.getSupabaseClient(authHeader);
-    if (!client.auth || typeof client.auth.getUser !== 'function') {
-      return null;
-    }
-    let userData: any;
-    let userError: any;
-    try {
-      const res = await client.auth.getUser();
-      userData = res.data;
-      userError = res.error;
-    } catch (err) {
-      this.logger.warn(`Could not verify user from token: ${(err as Error).message}`);
-      return null;
-    }
-
-    if (userError || !userData?.user?.id) {
-      return null;
-    }
-
-    const authUserId = userData.user.id;
-    const userRole = (
-      userData.user.app_metadata?.role ||
-      (userData.user as any).role ||
-      'TEAM_MEMBER'
-    ).toString();
-    const userEmail = (userData.user.email ?? '').toLowerCase();
-
-    const isDesignatedAdmin =
-      (authUserId === DESIGNATED_ADMIN_ID && userEmail === DESIGNATED_ADMIN_EMAIL) ||
-      (process.env.NODE_ENV !== 'production' &&
-        (authUserId === 'admin-1' ||
-          authUserId === 'admin-user-001' ||
-          authUserId === 'usr-123' ||
-          (authUserId === DESIGNATED_ADMIN_ID && userRole === 'ADMIN')));
-
-    return {
-      id: authUserId,
-      role: userRole,
-      email: userEmail,
-      isAdmin: isDesignatedAdmin,
-    };
-  }
-
   // --- TEAMS CRUD ---
 
   async createTeam(dto: CreateTeamDto, authHeader?: string) {
     this.validateUuid(dto.projectId, 'projectId');
     const client = this.getSupabaseClient(authHeader);
-
-    if (authHeader) {
-      const authUser = await this.getAuthenticatedUser(authHeader);
-      await this.checkProjectManageAccess(client, authUser, dto.projectId);
-    }
 
     const newTeam = {
       project_id: dto.projectId,
@@ -176,18 +110,6 @@ export class TeamsService {
     if (query.projectId) {
       this.validateUuid(query.projectId, 'projectId');
       supabaseQuery = supabaseQuery.eq('project_id', query.projectId);
-    } else if (authHeader) {
-      const authUser = await this.getAuthenticatedUser(authHeader);
-      if (authUser && !authUser.isAdmin) {
-        const authorizedIds = await this.resolveAuthorizedProjectIds(client, authUser.id);
-        if (authorizedIds.length === 0) {
-          return {
-            data: [],
-            meta: { total: 0, page, limit, totalPages: 0 },
-          };
-        }
-        supabaseQuery = supabaseQuery.in('project_id', authorizedIds);
-      }
     }
 
     const { data, count, error } = await supabaseQuery
@@ -239,12 +161,7 @@ export class TeamsService {
     this.validateUuid(id, 'teamId');
     const client = this.getSupabaseClient(authHeader);
 
-    const existing = await this.findOneTeam(id, authHeader);
-
-    if (authHeader) {
-      const authUser = await this.getAuthenticatedUser(authHeader);
-      await this.checkProjectManageAccess(client, authUser, existing.projectId);
-    }
+    await this.findOneTeam(id, authHeader);
 
     const updateData: Record<string, any> = {
       updated_at: new Date().toISOString(),
@@ -272,12 +189,7 @@ export class TeamsService {
     this.validateUuid(id, 'teamId');
     const client = this.getSupabaseClient(authHeader);
 
-    const existing = await this.findOneTeam(id, authHeader);
-
-    if (authHeader) {
-      const authUser = await this.getAuthenticatedUser(authHeader);
-      await this.checkProjectManageAccess(client, authUser, existing.projectId);
-    }
+    await this.findOneTeam(id, authHeader);
 
     const { error } = await client.from('teams').delete().eq('id', id);
 
@@ -294,21 +206,9 @@ export class TeamsService {
   async addMember(teamId: string, dto: AddTeamMemberDto, authHeader?: string) {
     this.validateUuid(teamId, 'teamId');
     this.validateUuid(dto.userId, 'userId');
-
-    // System Admin cannot be added as a team member
-    if (dto.userId === DESIGNATED_ADMIN_ID) {
-      throw new BadRequestException(
-        'The System Administrator cannot be assigned as a team member.',
-      );
-    }
-
     const client = this.getSupabaseClient(authHeader);
-    const existing = await this.findOneTeam(teamId, authHeader);
 
-    if (authHeader) {
-      const authUser = await this.getAuthenticatedUser(authHeader);
-      await this.checkProjectManageAccess(client, authUser, existing.projectId);
-    }
+    await this.findOneTeam(teamId, authHeader);
 
     const newMember = {
       team_id: teamId,
@@ -390,12 +290,7 @@ export class TeamsService {
     this.validateUuid(memberId, 'memberId');
     const client = this.getSupabaseClient(authHeader);
 
-    const existingTeam = await this.findOneTeam(teamId, authHeader);
-
-    if (authHeader) {
-      const authUser = await this.getAuthenticatedUser(authHeader);
-      await this.checkProjectManageAccess(client, authUser, existingTeam.projectId);
-    }
+    await this.findOneTeam(teamId, authHeader);
 
     const { data: existing, error: checkError } = await client
       .from('team_members')
@@ -405,7 +300,9 @@ export class TeamsService {
       .maybeSingle();
 
     if (checkError || !existing) {
-      throw new NotFoundException(`Team member with ID '${memberId}' not found in team '${teamId}'`);
+      throw new NotFoundException(
+        `Team member with ID '${memberId}' not found in team '${teamId}'`,
+      );
     }
 
     const { data, error } = await client
@@ -416,8 +313,10 @@ export class TeamsService {
       .single();
 
     if (error || !data) {
-      this.logger.error(`Failed to update team member role: ${error?.message}`);
-      throw new BadRequestException(error?.message || 'Failed to update team member role');
+      this.logger.error(`Failed to update member role: ${error?.message}`);
+      throw new BadRequestException(
+        error?.message || 'Failed to update member role',
+      );
     }
 
     return this.formatMember(data);
@@ -428,22 +327,31 @@ export class TeamsService {
     this.validateUuid(memberId, 'memberId');
     const client = this.getSupabaseClient(authHeader);
 
-    const existingTeam = await this.findOneTeam(teamId, authHeader);
+    await this.findOneTeam(teamId, authHeader);
 
-    if (authHeader) {
-      const authUser = await this.getAuthenticatedUser(authHeader);
-      await this.checkProjectManageAccess(client, authUser, existingTeam.projectId);
+    const { data: existing, error: checkError } = await client
+      .from('team_members')
+      .select('*')
+      .eq('id', memberId)
+      .eq('team_id', teamId)
+      .maybeSingle();
+
+    if (checkError || !existing) {
+      throw new NotFoundException(
+        `Team member with ID '${memberId}' not found in team '${teamId}'`,
+      );
     }
 
     const { error } = await client
       .from('team_members')
       .delete()
-      .eq('id', memberId)
-      .eq('team_id', teamId);
+      .eq('id', memberId);
 
     if (error) {
       this.logger.error(`Failed to remove team member: ${error.message}`);
-      throw new BadRequestException(error.message || 'Failed to remove team member');
+      throw new BadRequestException(
+        error.message || 'Failed to remove team member',
+      );
     }
 
     return { message: 'Team member removed successfully' };
@@ -451,9 +359,9 @@ export class TeamsService {
 
   // --- HELPERS ---
 
-  private validateUuid(id: string, fieldName: string): void {
+  private validateUuid(id: string, paramName: string): void {
     if (!id || !UUID_REGEX.test(id)) {
-      throw new BadRequestException(`Invalid ${fieldName} format: '${id}'`);
+      throw new BadRequestException(`Invalid ${paramName} format: '${id}'`);
     }
   }
 
@@ -473,89 +381,14 @@ export class TeamsService {
 
   private formatMember(row: any) {
     if (!row) {
-      throw new NotFoundException('Team member data not found');
+      throw new NotFoundException('Member data not found');
     }
     return {
       id: row.id,
       teamId: row.team_id,
       userId: row.user_id,
-      role: row.role as TeamRole,
+      role: row.role,
       createdAt: row.created_at,
     };
-  }
-
-  private async checkProjectManageAccess(
-    client: any,
-    authUser: AuthenticatedUser | null,
-    projectId: string,
-  ): Promise<void> {
-    if (!authUser || authUser.isAdmin) return;
-
-    if (authUser.role === 'VIEWER') {
-      throw new ForbiddenException('Viewers have read-only access and cannot modify teams.');
-    }
-    if (authUser.role === 'TEAM_MEMBER') {
-      throw new ForbiddenException('Team Members cannot create or manage teams.');
-    }
-
-    if (authUser.role === 'PROJECT_MANAGER') {
-      try {
-        const { data: membership } = await client
-          .from('project_members')
-          .select('id')
-          .eq('project_id', projectId)
-          .eq('user_id', authUser.id)
-          .maybeSingle();
-
-        if (!membership) {
-          throw new ForbiddenException(
-            'Access Denied: You do not have permission to manage teams in this project.',
-          );
-        }
-      } catch (err: any) {
-        if (err instanceof ForbiddenException) throw err;
-      }
-    }
-  }
-
-  private async resolveAuthorizedProjectIds(client: any, userId: string): Promise<string[]> {
-    try {
-      const projectIds = new Set<string>();
-
-      const { data: owned } = await client
-        .from('projects')
-        .select('id')
-        .eq('owner_id', userId);
-      if (Array.isArray(owned)) {
-        owned.forEach((p: any) => projectIds.add(p.id));
-      }
-
-      const { data: member } = await client
-        .from('project_members')
-        .select('project_id')
-        .eq('user_id', userId);
-      if (Array.isArray(member)) {
-        member.forEach((m: any) => projectIds.add(m.project_id));
-      }
-
-      const { data: teamMemberships } = await client
-        .from('team_members')
-        .select('team_id')
-        .eq('user_id', userId);
-      if (Array.isArray(teamMemberships) && teamMemberships.length > 0) {
-        const teamIds = teamMemberships.map((t: any) => t.team_id);
-        const { data: teamProjects } = await client
-          .from('teams')
-          .select('project_id')
-          .in('id', teamIds);
-        if (Array.isArray(teamProjects)) {
-          teamProjects.forEach((t: any) => projectIds.add(t.project_id));
-        }
-      }
-
-      return Array.from(projectIds);
-    } catch {
-      return [];
-    }
   }
 }

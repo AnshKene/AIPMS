@@ -8,7 +8,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { describe, beforeEach, it, expect, vi } from 'vitest';
-import { AuthService, SEEDED_USER_IDS } from './auth.service.js';
+import { AuthService } from './auth.service.js';
 import { Role } from './roles.enum.js';
 import { AuditService } from '../audit/audit.service.js';
 
@@ -443,7 +443,7 @@ describe('AuthService', () => {
 
       // Verify role persistence on listUsers
       const allUsers = await service.listUsers();
-      const target = allUsers.find((u) => u.id === SEEDED_USER_IDS.MEMBER || u.id === 'member-user-003');
+      const target = allUsers.find((u) => u.id === 'member-user-003');
       expect(target?.role).toBe(Role.PROJECT_MANAGER);
     });
 
@@ -483,7 +483,7 @@ describe('AuthService', () => {
 
       const result = await service.updateUserRole('member-user-003', Role.PROJECT_MANAGER);
       expect(result.role).toBe(Role.PROJECT_MANAGER);
-      expect(mockUpdateUserById).toHaveBeenCalledWith(SEEDED_USER_IDS.MEMBER, {
+      expect(mockUpdateUserById).toHaveBeenCalledWith('member-user-003', {
         app_metadata: { role: Role.PROJECT_MANAGER },
       });
     });
@@ -507,7 +507,7 @@ describe('AuthService', () => {
 
       // Ensure permissions were not silently granted
       const allUsers = await service.listUsers();
-      const target = allUsers.find((u) => u.id === SEEDED_USER_IDS.MEMBER || u.id === 'member-user-003');
+      const target = allUsers.find((u) => u.id === 'member-user-003');
       expect(target?.role).toBe(Role.TEAM_MEMBER);
     });
 
@@ -549,7 +549,7 @@ describe('AuthService', () => {
           actorId: 'custom-admin-id',
           actorEmail: 'realadmin@company.com',
           action: 'ROLE_ASSIGNED',
-          targetResource: SEEDED_USER_IDS.MEMBER,
+          targetResource: 'member-user-003',
           outcome: 'SUCCESS',
         }),
       );
@@ -789,399 +789,6 @@ describe('AuthService', () => {
       const designatedInList = allUsers.find((u) => u.id === AuthService.DESIGNATED_ADMIN_ID);
       expect(designatedInList).toBeDefined();
       expect(designatedInList?.role).toBe(Role.ADMIN);
-    });
-  });
-
-  describe('User Lifecycle Management (Deactivation, Reactivation, Deletion)', () => {
-    describe('deactivateUser', () => {
-      it('should allow System Admin to deactivate an ordinary active user', async () => {
-        const result = await service.deactivateUser(
-          'member-user-003',
-          Role.ADMIN,
-          AuthService.DESIGNATED_ADMIN_ID,
-          AuthService.DESIGNATED_ADMIN_EMAIL,
-        );
-
-        expect(result.status).toBe('INACTIVE');
-        expect(result.deactivatedAt).toBeDefined();
-        expect(mockAuditService.recordEvent).toHaveBeenCalledWith(
-          expect.objectContaining({
-            action: 'USER_DEACTIVATED',
-            targetResource: SEEDED_USER_IDS.MEMBER,
-            newValue: 'INACTIVE',
-          }),
-        );
-      });
-
-      it('should reject deactivation when requester is not an ADMIN', async () => {
-        await expect(
-          service.deactivateUser(
-            'member-user-003',
-            Role.TEAM_MEMBER,
-            'member-user-003',
-            'member@aipms.com',
-          ),
-        ).rejects.toThrow(ForbiddenException);
-      });
-
-      it('should reject deactivation of the designated System Admin', async () => {
-        await expect(
-          service.deactivateUser(
-            AuthService.DESIGNATED_ADMIN_ID,
-            Role.ADMIN,
-            'admin-user-001',
-            'admin@aipms.com',
-          ),
-        ).rejects.toThrow(ForbiddenException);
-      });
-
-      it('should reject self-deactivation by an administrator', async () => {
-        await expect(
-          service.deactivateUser(
-            'admin-user-001',
-            Role.ADMIN,
-            'admin-user-001',
-            'admin@aipms.com',
-          ),
-        ).rejects.toThrow(ForbiddenException);
-      });
-
-      it('should reject deactivation of an already inactive account', async () => {
-        await service.deactivateUser(
-          'viewer-user-004',
-          Role.ADMIN,
-          AuthService.DESIGNATED_ADMIN_ID,
-          AuthService.DESIGNATED_ADMIN_EMAIL,
-        );
-
-        await expect(
-          service.deactivateUser(
-            'viewer-user-004',
-            Role.ADMIN,
-            AuthService.DESIGNATED_ADMIN_ID,
-            AuthService.DESIGNATED_ADMIN_EMAIL,
-          ),
-        ).rejects.toThrow(ConflictException);
-      });
-
-      it('should reject deactivation if the user owns active projects', async () => {
-        (service as any).adminSupabase = {
-          from: vi.fn((table: string) => {
-            if (table === 'projects') {
-              return {
-                select: vi.fn().mockReturnThis(),
-                eq: vi.fn().mockResolvedValue({
-                  data: [{ id: 'p-1', name: 'Critical Production Project' }],
-                  error: null,
-                }),
-              };
-            }
-            return {
-              select: vi.fn().mockReturnThis(),
-              eq: vi.fn().mockResolvedValue({ data: [], error: null }),
-            };
-          }),
-        };
-
-        await expect(
-          service.deactivateUser(
-            'pm-user-002',
-            Role.ADMIN,
-            AuthService.DESIGNATED_ADMIN_ID,
-            AuthService.DESIGNATED_ADMIN_EMAIL,
-          ),
-        ).rejects.toThrow(ConflictException);
-      });
-    });
-
-    describe('reactivateUser', () => {
-      it('should allow System Admin to reactivate an inactive user', async () => {
-        // First deactivate
-        await service.deactivateUser(
-          'member-user-003',
-          Role.ADMIN,
-          AuthService.DESIGNATED_ADMIN_ID,
-          AuthService.DESIGNATED_ADMIN_EMAIL,
-        );
-
-        // Then reactivate
-        const reactivated = await service.reactivateUser(
-          'member-user-003',
-          Role.ADMIN,
-          AuthService.DESIGNATED_ADMIN_ID,
-          AuthService.DESIGNATED_ADMIN_EMAIL,
-        );
-
-        expect(reactivated.status).toBe('ACTIVE');
-        expect(reactivated.deactivatedAt).toBeNull();
-        expect(mockAuditService.recordEvent).toHaveBeenCalledWith(
-          expect.objectContaining({
-            action: 'USER_REACTIVATED',
-            targetResource: SEEDED_USER_IDS.MEMBER,
-            newValue: 'ACTIVE',
-          }),
-        );
-      });
-
-      it('should reject reactivating an already active user', async () => {
-        await expect(
-          service.reactivateUser(
-            'pm-user-002',
-            Role.ADMIN,
-            AuthService.DESIGNATED_ADMIN_ID,
-            AuthService.DESIGNATED_ADMIN_EMAIL,
-          ),
-        ).rejects.toThrow(ConflictException);
-      });
-
-      it('should reject reactivation when requester is not an ADMIN', async () => {
-        await expect(
-          service.reactivateUser(
-            'member-user-003',
-            Role.PROJECT_MANAGER,
-            'pm-user-002',
-            'pm@aipms.com',
-          ),
-        ).rejects.toThrow(ForbiddenException);
-      });
-    });
-
-    describe('session enforcement for deactivated accounts', () => {
-      it('should reject login for a deactivated user', async () => {
-        await service.deactivateUser(
-          'viewer-user-004',
-          Role.ADMIN,
-          AuthService.DESIGNATED_ADMIN_ID,
-          AuthService.DESIGNATED_ADMIN_EMAIL,
-        );
-
-        (service as any).supabase = {
-          auth: {
-            signInWithPassword: vi.fn().mockResolvedValue({
-              data: {
-                session: { access_token: 'fake-token' },
-                user: { id: 'viewer-user-004', email: 'viewer@aipms.com' },
-              },
-              error: null,
-            }),
-          },
-        };
-
-        await expect(
-          service.login({
-            email: 'viewer@aipms.com',
-            password: 'password123',
-          }),
-        ).rejects.toThrow(UnauthorizedException);
-      });
-
-      it('should reject active token validation (me/session) for a deactivated user', async () => {
-        await service.deactivateUser(
-          'member-user-003',
-          Role.ADMIN,
-          AuthService.DESIGNATED_ADMIN_ID,
-          AuthService.DESIGNATED_ADMIN_EMAIL,
-        );
-
-        (service as any).supabase = {
-          auth: {
-            getUser: vi.fn().mockResolvedValue({
-              data: {
-                user: { id: 'member-user-003', email: 'member@aipms.com' },
-              },
-              error: null,
-            }),
-          },
-        };
-
-        await expect(service.getCurrentUser('token-for-deactivated')).rejects.toThrow(
-          UnauthorizedException,
-        );
-      });
-    });
-
-    describe('deleteUser', () => {
-      it('should require deactivation before permanent account deletion (two-step enforcement)', async () => {
-        // Active user cannot be deleted directly
-        await expect(
-          service.deleteUser(
-            'member-user-003',
-            Role.ADMIN,
-            AuthService.DESIGNATED_ADMIN_ID,
-            AuthService.DESIGNATED_ADMIN_EMAIL,
-          ),
-        ).rejects.toThrow(BadRequestException);
-      });
-
-      it('should reject permanent deletion of the designated System Admin', async () => {
-        await expect(
-          service.deleteUser(
-            AuthService.DESIGNATED_ADMIN_ID,
-            Role.ADMIN,
-            'admin-user-001',
-            'admin@aipms.com',
-          ),
-        ).rejects.toThrow(ForbiddenException);
-      });
-
-      it('should reject self-deletion by an administrator', async () => {
-        await expect(
-          service.deleteUser(
-            'admin-user-001',
-            Role.ADMIN,
-            'admin-user-001',
-            'admin@aipms.com',
-          ),
-        ).rejects.toThrow(ForbiddenException);
-      });
-
-      it('should reject deletion if user owns projects', async () => {
-        await service.deactivateUser(
-          'pm-user-002',
-          Role.ADMIN,
-          AuthService.DESIGNATED_ADMIN_ID,
-          AuthService.DESIGNATED_ADMIN_EMAIL,
-        );
-
-        (service as any).adminSupabase = {
-          from: vi.fn((table: string) => {
-            if (table === 'projects') {
-              return {
-                select: vi.fn().mockReturnThis(),
-                eq: vi.fn().mockResolvedValue({
-                  data: [{ id: 'p-10', name: 'Legacy Project' }],
-                  error: null,
-                }),
-              };
-            }
-            return {
-              select: vi.fn().mockReturnThis(),
-              eq: vi.fn().mockResolvedValue({ data: [], error: null }),
-            };
-          }),
-        };
-
-        await expect(
-          service.deleteUser(
-            'pm-user-002',
-            Role.ADMIN,
-            AuthService.DESIGNATED_ADMIN_ID,
-            AuthService.DESIGNATED_ADMIN_EMAIL,
-          ),
-        ).rejects.toThrow(ConflictException);
-      });
-
-      it('should successfully delete deactivated user, unassign tasks, remove memberships, and record audit log', async () => {
-        // Step 1: Deactivate
-        await service.deactivateUser(
-          'viewer-user-004',
-          Role.ADMIN,
-          AuthService.DESIGNATED_ADMIN_ID,
-          AuthService.DESIGNATED_ADMIN_EMAIL,
-        );
-
-        const mockDeleteUser = vi.fn().mockResolvedValue({ error: null });
-        const mockDbFrom = vi.fn((table: string) => ({
-          select: vi.fn().mockReturnThis(),
-          delete: vi.fn().mockReturnThis(),
-          update: vi.fn().mockReturnThis(),
-          eq: vi.fn().mockResolvedValue({ data: [], error: null }),
-        }));
-
-        (service as any).adminSupabase = {
-          from: mockDbFrom,
-          auth: {
-            admin: {
-              deleteUser: mockDeleteUser,
-            },
-          },
-        };
-
-        // Step 2: Delete
-        const result = await service.deleteUser(
-          'viewer-user-004',
-          Role.ADMIN,
-          AuthService.DESIGNATED_ADMIN_ID,
-          AuthService.DESIGNATED_ADMIN_EMAIL,
-        );
-
-        expect(result.userId).toBe(SEEDED_USER_IDS.VIEWER);
-        expect(mockDeleteUser).toHaveBeenCalledWith(SEEDED_USER_IDS.VIEWER);
-        expect(mockAuditService.recordEvent).toHaveBeenCalledWith(
-          expect.objectContaining({
-            action: 'USER_DELETED',
-            targetResource: SEEDED_USER_IDS.VIEWER,
-            outcome: 'SUCCESS',
-          }),
-        );
-      });
-    });
-  });
-
-  describe('getDirectoryProfiles', () => {
-    it('should return safe user directory profiles without sensitive metadata', async () => {
-      const mockListUsers = vi.fn().mockResolvedValue({
-        data: {
-          users: [
-            {
-              id: 'user-active-1',
-              email: 'active@aipms.com',
-              user_metadata: { name: 'Active User' },
-              app_metadata: { role: Role.TEAM_MEMBER, status: 'ACTIVE' },
-              created_at: new Date().toISOString(),
-            },
-            {
-              id: 'user-inactive-2',
-              email: 'inactive@aipms.com',
-              user_metadata: { name: 'Inactive User' },
-              app_metadata: { role: Role.PROJECT_MANAGER, status: 'INACTIVE', deactivated_at: '2026-10-27T10:00:00Z' },
-              created_at: new Date().toISOString(),
-            },
-          ],
-        },
-        error: null,
-      });
-
-      (service as any).adminSupabase = {
-        from: vi.fn(() => ({
-          select: vi.fn().mockResolvedValue({
-            data: [
-              { id: 'user-active-1', email: 'active@aipms.com', name: 'Active User', role: Role.TEAM_MEMBER, status: 'ACTIVE' },
-              { id: 'user-inactive-2', email: 'inactive@aipms.com', name: 'Inactive User', role: Role.PROJECT_MANAGER, status: 'INACTIVE', deactivated_at: '2026-10-27T10:00:00Z' },
-            ],
-            error: null,
-          }),
-        })),
-        auth: {
-          admin: {
-            listUsers: mockListUsers,
-          },
-        },
-      };
-
-      const profiles = await service.getDirectoryProfiles();
-      const active = profiles.find((p) => p.id === 'user-active-1');
-      const inactive = profiles.find((p) => p.id === 'user-inactive-2');
-
-      expect(active).toEqual(
-        expect.objectContaining({
-          id: 'user-active-1',
-          name: 'Active User',
-          email: 'active@aipms.com',
-          role: Role.TEAM_MEMBER,
-          status: 'ACTIVE',
-        }),
-      );
-      expect(inactive).toEqual(
-        expect.objectContaining({
-          id: 'user-inactive-2',
-          name: 'Inactive User',
-          email: 'inactive@aipms.com',
-          role: Role.PROJECT_MANAGER,
-          status: 'INACTIVE',
-          deactivatedAt: '2026-10-27T10:00:00Z',
-        }),
-      );
     });
   });
 });

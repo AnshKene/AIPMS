@@ -12,7 +12,7 @@ import {
 } from '@/lib/api/teams';
 import { TeamMemberRow } from './team-member-row';
 import { Button } from '@/components/ui/button';
-import { UserSelector } from '@/components/common/UserSelector';
+import { Input } from '@/components/ui/input';
 import {
   Users,
   UserPlus,
@@ -198,14 +198,16 @@ export function TeamMembers({
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <div className="sm:col-span-2">
                 <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">
-                  Team Contributor
+                  User ID (UUID)
                 </label>
-                <UserSelector
+                <Input
+                  type="text"
+                  placeholder="e.g. 550e8400-e29b-41d4-a716-446655440000"
                   value={userIdInput}
-                  onChange={setUserIdInput}
-                  excludeUserIds={members.map((m) => m.userId)}
-                  placeholder="Select a user to add to team..."
+                  onChange={(e) => setUserIdInput(e.target.value)}
                   disabled={addingMember}
+                  className="h-8 text-xs font-mono bg-white dark:bg-slate-900"
+                  autoFocus
                 />
               </div>
 
