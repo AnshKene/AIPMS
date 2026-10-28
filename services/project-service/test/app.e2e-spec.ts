@@ -50,6 +50,22 @@ describe('Project Service (e2e)', () => {
     });
   });
 
+  const validAuthHeader = 'Bearer valid-jwt-token';
+
+  describe('Authentication Enforcement', () => {
+    it('should reject requests without Authorization header with 401 Unauthorized', async () => {
+      await request(app.getHttpServer()).get('/api/projects').expect(401);
+      await request(app.getHttpServer())
+        .post('/api/projects')
+        .send({
+          name: 'AIPMS',
+          status: 'PLANNING',
+          ownerId: ownerUuid,
+        })
+        .expect(401);
+    });
+  });
+
   describe('POST /api/projects', () => {
     it('should create a project on valid payload', async () => {
       const createdProject = {
@@ -68,6 +84,7 @@ describe('Project Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post('/api/projects')
+        .set('Authorization', validAuthHeader)
         .send({
           name: 'AIPMS',
           description: 'AI-Based System',
@@ -84,6 +101,7 @@ describe('Project Service (e2e)', () => {
     it('should return 400 Bad Request on invalid payload', async () => {
       const response = await request(app.getHttpServer())
         .post('/api/projects')
+        .set('Authorization', validAuthHeader)
         .send({
           name: '',
           status: 'INVALID_STATUS',
@@ -113,6 +131,7 @@ describe('Project Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .get('/api/projects?page=1&limit=20')
+        .set('Authorization', validAuthHeader)
         .expect(200);
 
       expect(response.body).toEqual(paginatedResult);
@@ -131,6 +150,7 @@ describe('Project Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .get(`/api/projects/${validUuid}`)
+        .set('Authorization', validAuthHeader)
         .expect(200);
 
       expect(response.body).toEqual(project);
@@ -139,6 +159,7 @@ describe('Project Service (e2e)', () => {
     it('should return 400 Bad Request on invalid UUID parameter', async () => {
       const response = await request(app.getHttpServer())
         .get('/api/projects/not-a-valid-uuid')
+        .set('Authorization', validAuthHeader)
         .expect(400);
 
       expect(response.body.statusCode).toBe(400);
@@ -157,6 +178,7 @@ describe('Project Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .patch(`/api/projects/${validUuid}`)
+        .set('Authorization', validAuthHeader)
         .send({
           name: 'AIPMS Phase 2',
           status: 'ACTIVE',
@@ -168,6 +190,7 @@ describe('Project Service (e2e)', () => {
     it('should reject attempted ownership update in PATCH payload with 400 Bad Request', async () => {
       const response = await request(app.getHttpServer())
         .patch(`/api/projects/${validUuid}`)
+        .set('Authorization', validAuthHeader)
         .send({
           name: 'AIPMS Phase 2',
           ownerId: 'b2c3d4e5-6789-41bc-a234-2345678901bc',
@@ -189,6 +212,7 @@ describe('Project Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .delete(`/api/projects/${validUuid}`)
+        .set('Authorization', validAuthHeader)
         .expect(200);
 
       expect(response.body).toEqual(archivedProject);
@@ -208,6 +232,7 @@ describe('Project Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post(`/api/projects/${validUuid}/transfer-ownership`)
+        .set('Authorization', validAuthHeader)
         .send({
           newOwnerId: newOwnerUuid,
         })
@@ -219,6 +244,7 @@ describe('Project Service (e2e)', () => {
     it('should return 400 on invalid newOwnerId format', async () => {
       const response = await request(app.getHttpServer())
         .post(`/api/projects/${validUuid}/transfer-ownership`)
+        .set('Authorization', validAuthHeader)
         .send({
           newOwnerId: 'invalid-uuid',
         })

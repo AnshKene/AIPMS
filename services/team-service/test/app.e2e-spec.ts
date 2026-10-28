@@ -52,6 +52,18 @@ describe('Team Service (e2e)', () => {
     });
   });
 
+  const validAuthHeader = 'Bearer valid-jwt-token';
+
+  describe('Authentication Enforcement', () => {
+    it('should reject requests without Authorization header with 401 Unauthorized', async () => {
+      await request(app.getHttpServer()).get('/api/teams').expect(401);
+      await request(app.getHttpServer())
+        .post('/api/teams')
+        .send({ projectId: validProjectUuid, name: 'Dev Team' })
+        .expect(401);
+    });
+  });
+
   describe('POST /api/teams', () => {
     it('should create a team on valid payload', async () => {
       const createdTeam = {
@@ -67,6 +79,7 @@ describe('Team Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post('/api/teams')
+        .set('Authorization', validAuthHeader)
         .send({
           projectId: validProjectUuid,
           name: 'Dev Team',
@@ -80,6 +93,7 @@ describe('Team Service (e2e)', () => {
     it('should return 400 Bad Request on invalid UUID or missing name', async () => {
       const response = await request(app.getHttpServer())
         .post('/api/teams')
+        .set('Authorization', validAuthHeader)
         .send({
           projectId: 'invalid-uuid',
           name: '',
@@ -101,6 +115,7 @@ describe('Team Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .get('/api/teams?page=1&limit=20')
+        .set('Authorization', validAuthHeader)
         .expect(200);
 
       expect(response.body).toEqual(result);
@@ -114,6 +129,7 @@ describe('Team Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .get(`/api/teams/${validTeamUuid}`)
+        .set('Authorization', validAuthHeader)
         .expect(200);
 
       expect(response.body).toEqual(team);
@@ -122,6 +138,7 @@ describe('Team Service (e2e)', () => {
     it('should return 400 Bad Request on invalid UUID parameter', async () => {
       const response = await request(app.getHttpServer())
         .get('/api/teams/not-a-valid-uuid')
+        .set('Authorization', validAuthHeader)
         .expect(400);
 
       expect(response.body.statusCode).toBe(400);
@@ -142,6 +159,7 @@ describe('Team Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post(`/api/teams/${validTeamUuid}/members`)
+        .set('Authorization', validAuthHeader)
         .send({
           userId: validUserUuid,
           role: 'TEAM_LEAD',
@@ -154,6 +172,7 @@ describe('Team Service (e2e)', () => {
     it('should return 400 Bad Request on invalid role', async () => {
       const response = await request(app.getHttpServer())
         .post(`/api/teams/${validTeamUuid}/members`)
+        .set('Authorization', validAuthHeader)
         .send({
           userId: validUserUuid,
           role: 'INVALID_ROLE',
@@ -175,6 +194,7 @@ describe('Team Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .get(`/api/teams/${validTeamUuid}/members`)
+        .set('Authorization', validAuthHeader)
         .expect(200);
 
       expect(response.body).toEqual(result);
@@ -188,6 +208,7 @@ describe('Team Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .delete(`/api/teams/${validTeamUuid}/members/${validMemberUuid}`)
+        .set('Authorization', validAuthHeader)
         .expect(200);
 
       expect(response.body).toEqual(responseMessage);
