@@ -39,6 +39,23 @@ describe('Sprint Service (e2e)', () => {
     vi.restoreAllMocks();
   });
 
+  const validAuthHeader = 'Bearer valid-jwt-token';
+
+  describe('Authentication Enforcement', () => {
+    it('should reject requests without Authorization header with 401 Unauthorized', async () => {
+      await request(app.getHttpServer()).get('/api/sprints').expect(401);
+      await request(app.getHttpServer())
+        .post('/api/sprints')
+        .send({
+          project_id: projectUuid,
+          name: 'Sprint 1',
+          start_date: '2026-10-01T00:00:00Z',
+          end_date: '2026-10-14T23:59:59Z',
+        })
+        .expect(401);
+    });
+  });
+
   describe('GET /api/health', () => {
     it('should return 200 OK with health status', async () => {
       const response = await request(app.getHttpServer())
@@ -68,6 +85,7 @@ describe('Sprint Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post('/api/sprints')
+        .set('Authorization', validAuthHeader)
         .send({
           project_id: projectUuid,
           name: 'Sprint 1',
@@ -84,6 +102,7 @@ describe('Sprint Service (e2e)', () => {
     it('should return 400 Bad Request when end_date < start_date', async () => {
       const response = await request(app.getHttpServer())
         .post('/api/sprints')
+        .set('Authorization', validAuthHeader)
         .send({
           project_id: projectUuid,
           name: 'Invalid Sprint',
@@ -98,6 +117,7 @@ describe('Sprint Service (e2e)', () => {
     it('should return 400 Bad Request on invalid payload', async () => {
       const response = await request(app.getHttpServer())
         .post('/api/sprints')
+        .set('Authorization', validAuthHeader)
         .send({
           name: '',
           project_id: 'not-a-uuid',
@@ -110,6 +130,7 @@ describe('Sprint Service (e2e)', () => {
     it('should reject requests missing project_id', async () => {
       const response = await request(app.getHttpServer())
         .post('/api/sprints')
+        .set('Authorization', validAuthHeader)
         .send({
           name: 'Test Sprint',
           start_date: '2026-10-17T00:00:00.000Z',
@@ -126,6 +147,7 @@ describe('Sprint Service (e2e)', () => {
     it('should reject requests with invalid project_id UUID', async () => {
       const response = await request(app.getHttpServer())
         .post('/api/sprints')
+        .set('Authorization', validAuthHeader)
         .send({
           project_id: 'invalid',
           name: 'Test Sprint',
@@ -143,6 +165,7 @@ describe('Sprint Service (e2e)', () => {
     it('should reject requests with invalid non-ISO date formats', async () => {
       const response = await request(app.getHttpServer())
         .post('/api/sprints')
+        .set('Authorization', validAuthHeader)
         .send({
           project_id: projectUuid,
           name: 'Test Sprint',
@@ -163,6 +186,7 @@ describe('Sprint Service (e2e)', () => {
     it('should reject requests containing unwhitelisted camelCase properties', async () => {
       const response = await request(app.getHttpServer())
         .post('/api/sprints')
+        .set('Authorization', validAuthHeader)
         .send({
           projectId: projectUuid,
           name: 'Test Sprint',
@@ -206,6 +230,7 @@ describe('Sprint Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .get('/api/sprints?page=1&limit=20')
+        .set('Authorization', validAuthHeader)
         .expect(200);
 
       expect(response.body).toEqual(paginatedResult);
@@ -225,6 +250,7 @@ describe('Sprint Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .get(`/api/sprints/${validUuid}`)
+        .set('Authorization', validAuthHeader)
         .expect(200);
 
       expect(response.body).toEqual(sprint);
@@ -233,6 +259,7 @@ describe('Sprint Service (e2e)', () => {
     it('should return 400 Bad Request on invalid UUID parameter', async () => {
       const response = await request(app.getHttpServer())
         .get('/api/sprints/not-a-valid-uuid')
+        .set('Authorization', validAuthHeader)
         .expect(400);
 
       expect(response.body.statusCode).toBe(400);
@@ -251,6 +278,7 @@ describe('Sprint Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .patch(`/api/sprints/${validUuid}`)
+        .set('Authorization', validAuthHeader)
         .send({
           name: 'Sprint 1 Updated',
           goal: 'Updated goal',
@@ -268,6 +296,7 @@ describe('Sprint Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post(`/api/sprints/${validUuid}/start`)
+        .set('Authorization', validAuthHeader)
         .expect(200);
 
       expect(response.body.status).toBe('ACTIVE');
@@ -281,6 +310,7 @@ describe('Sprint Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post(`/api/sprints/${validUuid}/start`)
+        .set('Authorization', validAuthHeader)
         .expect(409);
 
       expect(response.body.statusCode).toBe(409);
@@ -292,6 +322,7 @@ describe('Sprint Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post(`/api/sprints/${validUuid}/complete`)
+        .set('Authorization', validAuthHeader)
         .expect(200);
 
       expect(response.body.status).toBe('COMPLETED');
@@ -303,6 +334,7 @@ describe('Sprint Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post(`/api/sprints/${validUuid}/cancel`)
+        .set('Authorization', validAuthHeader)
         .expect(200);
 
       expect(response.body.status).toBe('CANCELLED');
@@ -316,6 +348,7 @@ describe('Sprint Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .delete(`/api/sprints/${validUuid}`)
+        .set('Authorization', validAuthHeader)
         .expect(200);
 
       expect(response.body).toEqual(deleteResult);
@@ -329,6 +362,7 @@ describe('Sprint Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .delete(`/api/sprints/${validUuid}`)
+        .set('Authorization', validAuthHeader)
         .expect(409);
 
       expect(response.body.statusCode).toBe(409);

@@ -156,6 +156,15 @@ export class TeamsService {
       .single();
 
     if (error) {
+      if (
+        error.code === '42501' ||
+        error.message?.toLowerCase().includes('row-level security') ||
+        error.message?.toLowerCase().includes('permission denied')
+      ) {
+        throw new ForbiddenException(
+          'Access Denied: You are not authorized to create teams in this project. Please ensure you are an assigned Project Manager or the Project Owner.',
+        );
+      }
       this.logger.error(`Failed to create team: ${error.message}`);
       throw new BadRequestException(error.message || 'Failed to create team');
     }
@@ -498,20 +507,37 @@ export class TeamsService {
       throw new ForbiddenException('Team Members cannot create or manage teams.');
     }
 
-    if (authUser.role === 'PROJECT_MANAGER') {
+    // Check project ownership
+    try {
+      const { data: project } = await client
+        .from('projects')
+        .select('owner_id')
+        .eq('id', projectId)
+        .maybeSingle();
+
+      if (project?.owner_id === authUser.id) {
+        return; // Project Owner has management access
+      }
+    } catch {
+      // Continue to project_members check
+    }
+
+    if (authUser.role === 'PROJECT_MANAGER' || authUser.role === 'PROJECT_OWNER') {
       try {
         const { data: membership } = await client
           .from('project_members')
-          .select('id')
+          .select('id, role')
           .eq('project_id', projectId)
           .eq('user_id', authUser.id)
           .maybeSingle();
 
-        if (!membership) {
-          throw new ForbiddenException(
-            'Access Denied: You do not have permission to manage teams in this project.',
-          );
+        if (membership && membership.role !== 'VIEWER') {
+          return;
         }
+
+        throw new ForbiddenException(
+          'Access Denied: You do not have permission to manage teams in this project.',
+        );
       } catch (err: any) {
         if (err instanceof ForbiddenException) throw err;
       }

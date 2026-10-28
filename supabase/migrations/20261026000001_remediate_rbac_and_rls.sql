@@ -67,7 +67,19 @@ AS $$
     EXISTS (
       SELECT 1 FROM projects WHERE id = p_project_id AND owner_id = auth.uid()
       UNION
-      SELECT 1 FROM project_members WHERE project_id = p_project_id AND user_id = auth.uid() AND role = 'PROJECT_MANAGER'
+      SELECT 1 FROM project_members
+      WHERE project_id = p_project_id
+        AND user_id = auth.uid()
+        AND (
+          role = 'PROJECT_MANAGER'
+          OR (
+            role != 'VIEWER'
+            AND (
+              COALESCE(auth.jwt() -> 'app_metadata' ->> 'role', '') IN ('PROJECT_MANAGER', 'PROJECT_OWNER', 'ADMIN')
+              OR COALESCE(auth.jwt() ->> 'role', '') IN ('PROJECT_MANAGER', 'PROJECT_OWNER', 'ADMIN')
+            )
+          )
+        )
     )
   );
 $$;

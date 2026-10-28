@@ -51,6 +51,12 @@ describe('Reporting Service (e2e)', () => {
     });
   });
 
+  describe('Authentication Enforcement', () => {
+    it('should reject requests without Authorization header with 401 Unauthorized', async () => {
+      await request(app.getHttpServer()).get(`/api/reports/projects/${projectUuid}/overview`).expect(401);
+    });
+  });
+
   // ─── GET /api/reports/projects/:projectId/overview ───────────────────────────
 
   describe('GET /api/reports/projects/:projectId/overview', () => {
@@ -102,6 +108,7 @@ describe('Reporting Service (e2e)', () => {
     it('should return 400 Bad Request on invalid UUID', async () => {
       const response = await request(app.getHttpServer())
         .get('/api/reports/projects/not-a-uuid/overview')
+        .set('Authorization', 'Bearer sample-jwt-token')
         .expect(400);
 
       expect(response.body.statusCode).toBe(400);
@@ -146,6 +153,7 @@ describe('Reporting Service (e2e)', () => {
     it('should return 400 Bad Request on invalid UUID', async () => {
       const response = await request(app.getHttpServer())
         .get('/api/reports/projects/bad-id/tasks')
+        .set('Authorization', 'Bearer sample-jwt-token')
         .expect(400);
 
       expect(response.body.statusCode).toBe(400);
@@ -181,6 +189,7 @@ describe('Reporting Service (e2e)', () => {
     it('should return 400 Bad Request on invalid UUID', async () => {
       const response = await request(app.getHttpServer())
         .get('/api/reports/projects/bad-id/sprints')
+        .set('Authorization', 'Bearer sample-jwt-token')
         .expect(400);
 
       expect(response.body.statusCode).toBe(400);
@@ -230,6 +239,7 @@ describe('Reporting Service (e2e)', () => {
     it('should return 400 Bad Request on invalid UUID', async () => {
       const response = await request(app.getHttpServer())
         .get('/api/reports/projects/bad-id/risks')
+        .set('Authorization', 'Bearer sample-jwt-token')
         .expect(400);
 
       expect(response.body.statusCode).toBe(400);

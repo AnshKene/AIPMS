@@ -40,6 +40,23 @@ describe('Risk Service (e2e)', () => {
     vi.restoreAllMocks();
   });
 
+  const validAuthHeader = 'Bearer valid-jwt-token';
+
+  describe('Authentication Enforcement', () => {
+    it('should reject requests without Authorization header with 401 Unauthorized', async () => {
+      await request(app.getHttpServer()).get('/api/risks').expect(401);
+      await request(app.getHttpServer())
+        .post('/api/risks')
+        .send({
+          project_id: projectUuid,
+          title: 'Database Delay Risk',
+          probability: 'MEDIUM',
+          impact: 'HIGH',
+        })
+        .expect(401);
+    });
+  });
+
   describe('GET /api/health', () => {
     it('should return 200 OK with health status', async () => {
       const response = await request(app.getHttpServer())
@@ -73,6 +90,7 @@ describe('Risk Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post('/api/risks')
+        .set('Authorization', validAuthHeader)
         .send({
           project_id: projectUuid,
           title: 'Database Delay Risk',
@@ -93,6 +111,7 @@ describe('Risk Service (e2e)', () => {
     it('should return 400 Bad Request on invalid payload (missing project_id)', async () => {
       const response = await request(app.getHttpServer())
         .post('/api/risks')
+        .set('Authorization', validAuthHeader)
         .send({
           title: 'Missing Project Risk',
           probability: 'MEDIUM',
@@ -106,6 +125,7 @@ describe('Risk Service (e2e)', () => {
     it('should return 400 Bad Request on invalid enum value', async () => {
       const response = await request(app.getHttpServer())
         .post('/api/risks')
+        .set('Authorization', validAuthHeader)
         .send({
           project_id: projectUuid,
           title: 'Invalid Enum Risk',
@@ -139,6 +159,7 @@ describe('Risk Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .get(`/api/risks?project_id=${projectUuid}&status=OPEN&page=1&limit=20`)
+        .set('Authorization', validAuthHeader)
         .expect(200);
 
       expect(response.body).toEqual(paginatedResult);
@@ -158,6 +179,7 @@ describe('Risk Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .get(`/api/risks/${validUuid}`)
+        .set('Authorization', validAuthHeader)
         .expect(200);
 
       expect(response.body).toEqual(risk);
@@ -166,6 +188,7 @@ describe('Risk Service (e2e)', () => {
     it('should return 400 Bad Request on invalid UUID parameter', async () => {
       const response = await request(app.getHttpServer())
         .get('/api/risks/not-a-valid-uuid')
+        .set('Authorization', validAuthHeader)
         .expect(400);
 
       expect(response.body.statusCode).toBe(400);
@@ -179,6 +202,7 @@ describe('Risk Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .get(`/api/risks/${validUuid}`)
+        .set('Authorization', validAuthHeader)
         .expect(404);
 
       expect(response.body.statusCode).toBe(404);
@@ -198,6 +222,7 @@ describe('Risk Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .patch(`/api/risks/${validUuid}`)
+        .set('Authorization', validAuthHeader)
         .send({
           title: 'Updated Risk Title',
           status: 'MITIGATING',
@@ -217,6 +242,7 @@ describe('Risk Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .delete(`/api/risks/${validUuid}`)
+        .set('Authorization', validAuthHeader)
         .expect(200);
 
       expect(response.body).toEqual(deleteResult);
@@ -230,6 +256,7 @@ describe('Risk Service (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .delete(`/api/risks/${validUuid}`)
+        .set('Authorization', validAuthHeader)
         .expect(404);
 
       expect(response.body.statusCode).toBe(404);
