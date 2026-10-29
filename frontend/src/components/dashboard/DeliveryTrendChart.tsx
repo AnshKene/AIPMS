@@ -41,22 +41,35 @@ export function DeliveryTrendChart({ tasks = [], sprints = [] }: DeliveryTrendCh
       }
     }
 
+    type TaskFallback = Task & {
+      sprint_id?: string | null;
+      due_date?: string | null;
+      start_date?: string | null;
+      created_at?: string;
+    };
+    type SprintFallback = Sprint & {
+      end_date?: string;
+      start_date?: string;
+    };
+
     // Group tasks by scheduled milestone / delivery month
     const monthMap = new Map<string, { total: number; done: number; label: string }>();
     for (const t of tasks) {
-      const sId = t.sprintId || (t as any).sprint_id;
+      const tFallback = t as TaskFallback;
+      const sId = t.sprintId || tFallback.sprint_id;
       const sprint = sId ? sprintMap.get(sId) : null;
+      const sFallback = sprint as SprintFallback | null;
       const rawDate =
         t.dueDate ||
-        (t as any).due_date ||
+        tFallback.due_date ||
         t.startDate ||
-        (t as any).start_date ||
+        tFallback.start_date ||
         sprint?.endDate ||
-        (sprint as any)?.end_date ||
+        sFallback?.end_date ||
         sprint?.startDate ||
-        (sprint as any)?.start_date ||
+        sFallback?.start_date ||
         t.createdAt ||
-        (t as any).created_at;
+        tFallback.created_at;
 
       if (!rawDate) continue;
       const date = new Date(rawDate);

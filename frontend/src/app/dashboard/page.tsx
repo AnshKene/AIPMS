@@ -166,7 +166,8 @@ function DashboardContent() {
       // Group tasks by sprint ID to inspect sprint-level execution blockers
       const sprintBlockedMap = new Map<string, number>();
       taskList.forEach((t) => {
-        const sId = t.sprintId || (t as any).sprint_id;
+        const sWithFallbacks = t as Task & { sprint_id?: string | null };
+        const sId = t.sprintId || sWithFallbacks.sprint_id;
         if (sId && t.status === 'BLOCKED') {
           sprintBlockedMap.set(sId, (sprintBlockedMap.get(sId) || 0) + 1);
         }
@@ -180,11 +181,12 @@ function DashboardContent() {
       let atRiskSprintsCount = 0;
 
       activeSprintsList.forEach((s) => {
-        const endDateVal = s.endDate || (s as any).end_date;
-        const endDate = new Date(endDateVal).getTime();
+        const sWithFallbacks = s as Sprint & { end_date?: string; project_id?: string };
+        const endDateVal = s.endDate || sWithFallbacks.end_date;
+        const endDate = endDateVal ? new Date(endDateVal).getTime() : NaN;
         const isPastDue = !isNaN(endDate) && endDate < Date.now();
         const blockedTasks = sprintBlockedMap.get(s.id) || 0;
-        const sProjId = s.projectId || (s as any).project_id;
+        const sProjId = s.projectId || sWithFallbacks.project_id;
         const hasCriticalRisk = sProjId ? criticalRiskProjectIds.has(sProjId) : false;
 
         if (isPastDue || blockedTasks > 0 || hasCriticalRisk) {
@@ -268,9 +270,10 @@ function DashboardContent() {
   const sprintPlanned = sprints.filter((s) => s.status === 'PLANNED').length;
   const sprintOffTrack = sprints.filter((s) => {
     if (s.status !== 'ACTIVE') return false;
-    const endDateVal = s.endDate || (s as any).end_date;
-    const endDate = new Date(endDateVal).getTime();
-    return !isNaN(endDate) && endDate < Date.now();
+    const sWithFallbacks = s as Sprint & { end_date?: string };
+    const endDateVal = s.endDate || sWithFallbacks.end_date;
+    const endDate = endDateVal ? new Date(endDateVal).getTime() : NaN;
+    return !isNaN(endDate) && endDate < now;
   }).length;
 
   // Dynamic user greeting name from auth context

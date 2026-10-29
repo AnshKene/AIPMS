@@ -258,7 +258,7 @@ export function TaskDetail({
     }
   }
 
-  const _directoryVersion = React.useSyncExternalStore(
+  React.useSyncExternalStore(
     (cb) => userDirectory.subscribe(cb),
     () => userDirectory.getVersion(),
     () => 0,
