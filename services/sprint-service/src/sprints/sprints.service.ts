@@ -106,12 +106,33 @@ export class SprintsService {
     }
 
     const authUserId = userData.user.id;
-    const userRole = (
-      userData.user.app_metadata?.role ||
-      (userData.user as any).role ||
-      'TEAM_MEMBER'
-    ).toString();
     const userEmail = (userData.user.email ?? '').toLowerCase();
+
+    let userRole =
+      userData.user.app_metadata?.role ||
+      userData.user.user_metadata?.role;
+
+    const VALID_ROLES = ['ADMIN', 'PROJECT_OWNER', 'PROJECT_MANAGER', 'TEAM_MEMBER', 'VIEWER'];
+    if (!userRole || !VALID_ROLES.includes(userRole)) {
+      try {
+        const authServiceUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+        const res = await fetch(`${authServiceUrl}/api/auth/me`, {
+          headers: { Authorization: authHeader },
+        });
+        if (res.ok) {
+          const authData: any = await res.json();
+          if (authData?.role && VALID_ROLES.includes(authData.role)) {
+            userRole = authData.role;
+          }
+        }
+      } catch (err) {
+        this.logger.warn(`Could not verify role from auth-service: ${(err as Error).message}`);
+      }
+    }
+
+    if (!userRole || !VALID_ROLES.includes(userRole)) {
+      userRole = 'TEAM_MEMBER';
+    }
 
     const isDesignatedAdmin =
       (authUserId === DESIGNATED_ADMIN_ID && userEmail === DESIGNATED_ADMIN_EMAIL) ||
@@ -121,9 +142,11 @@ export class SprintsService {
           authUserId === 'usr-123' ||
           (authUserId === DESIGNATED_ADMIN_ID && userRole === 'ADMIN')));
 
+    const finalRole = isDesignatedAdmin ? 'ADMIN' : userRole;
+
     return {
       id: authUserId,
-      role: userRole,
+      role: finalRole,
       email: userEmail,
       isAdmin: isDesignatedAdmin,
     };
@@ -308,15 +331,18 @@ export class SprintsService {
       .from('sprints')
       .update(updateData)
       .eq('id', id)
-      .select()
-      .single();
+      .select();
 
-    if (error || !data) {
+    if (error) {
       this.logger.error(`Failed to start sprint ${id}: ${error?.message}`);
       throw new BadRequestException(error?.message || 'Failed to start sprint');
     }
 
-    return this.formatSprint(data);
+    if (!data || data.length === 0) {
+      throw new NotFoundException(`Sprint with ID '${id}' not found or update not permitted`);
+    }
+
+    return this.formatSprint(data[0]);
   }
 
   async complete(id: string, authHeader?: string) {
@@ -345,15 +371,18 @@ export class SprintsService {
       .from('sprints')
       .update(updateData)
       .eq('id', id)
-      .select()
-      .single();
+      .select();
 
-    if (error || !data) {
+    if (error) {
       this.logger.error(`Failed to complete sprint ${id}: ${error?.message}`);
       throw new BadRequestException(error?.message || 'Failed to complete sprint');
     }
 
-    return this.formatSprint(data);
+    if (!data || data.length === 0) {
+      throw new NotFoundException(`Sprint with ID '${id}' not found or update not permitted`);
+    }
+
+    return this.formatSprint(data[0]);
   }
 
   async cancel(id: string, authHeader?: string) {
@@ -385,15 +414,18 @@ export class SprintsService {
       .from('sprints')
       .update(updateData)
       .eq('id', id)
-      .select()
-      .single();
+      .select();
 
-    if (error || !data) {
+    if (error) {
       this.logger.error(`Failed to cancel sprint ${id}: ${error?.message}`);
       throw new BadRequestException(error?.message || 'Failed to cancel sprint');
     }
 
-    return this.formatSprint(data);
+    if (!data || data.length === 0) {
+      throw new NotFoundException(`Sprint with ID '${id}' not found or update not permitted`);
+    }
+
+    return this.formatSprint(data[0]);
   }
 
   async remove(id: string, authHeader?: string) {
@@ -471,24 +503,47 @@ export class SprintsService {
       throw new ForbiddenException('Team Members cannot manage sprints.');
     }
 
-    if (authUser.role === 'PROJECT_MANAGER') {
-      try {
-        const { data: membership } = await client
-          .from('project_members')
-          .select('id')
-          .eq('project_id', projectId)
-          .eq('user_id', authUser.id)
-          .maybeSingle();
+    if (authUser.role === 'PROJECT_OWNER') {
+      const { data: project } = await client
+        .from('projects')
+        .select('id, owner_id')
+        .eq('id', projectId)
+        .maybeSingle();
 
-        if (!membership) {
-          throw new ForbiddenException(
-            'Access Denied: You do not have permission to manage sprints in this project.',
-          );
-        }
-      } catch (err: any) {
-        if (err instanceof ForbiddenException) throw err;
+      if (!project || project.owner_id !== authUser.id) {
+        throw new ForbiddenException(
+          'Access Denied: You can only manage sprints within projects you own.',
+        );
       }
+      return;
     }
+
+    if (authUser.role === 'PROJECT_MANAGER') {
+      const { data: membership } = await client
+        .from('project_members')
+        .select('id, role')
+        .eq('project_id', projectId)
+        .eq('user_id', authUser.id)
+        .maybeSingle();
+
+      const { data: project } = await client
+        .from('projects')
+        .select('owner_id')
+        .eq('id', projectId)
+        .maybeSingle();
+
+      const isOwner = project?.owner_id === authUser.id;
+      const isAssigned = membership && membership.role === 'PROJECT_MANAGER';
+
+      if (!isAssigned && !isOwner) {
+        throw new ForbiddenException(
+          'Access Denied: You do not have permission to manage sprints in this project.',
+        );
+      }
+      return;
+    }
+
+    throw new ForbiddenException('Access Denied: Insufficient authorization to manage sprints.');
   }
 
   private async resolveAuthorizedProjectIds(client: any, userId: string): Promise<string[]> {

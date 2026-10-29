@@ -205,8 +205,15 @@ function TasksContent() {
   const projectIdParam = searchParams.get('projectId') || '';
   const sprintIdParam = searchParams.get('sprintId') || '';
 
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const canCreateTask = user?.role === 'ADMIN' || user?.role === 'PROJECT_OWNER' || user?.role === 'PROJECT_MANAGER';
+
+  // Ensure authoritative directory is loaded so assignee names resolve cleanly
+  React.useEffect(() => {
+    if (token) {
+      void userDirectory.fetchDirectory(token);
+    }
+  }, [token]);
 
   // Scope state
   const [activeProject, setActiveProject] = React.useState<Project | null>(null);

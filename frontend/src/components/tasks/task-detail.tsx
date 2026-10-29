@@ -182,9 +182,9 @@ export function TaskDetail({
   const isAssignedPM = projectMembers.some(
     (m) => m.userId === user?.id && m.role === 'PROJECT_MANAGER',
   );
-  const canManageTask = isGlobalAdmin || isProjectOwner || isAssignedPM || user?.role === 'PROJECT_OWNER';
+  const canManageTask = isGlobalAdmin || isProjectOwner || isAssignedPM;
   const isAssignedMember = Boolean(user && task && task.assigneeId === user.id);
-  const canUpdateStatus = canManageTask || isAssignedMember;
+  const canUpdateStatus = (canManageTask || isAssignedMember) && user?.role !== 'VIEWER';
 
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);

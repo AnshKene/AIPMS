@@ -3,10 +3,12 @@
 import * as React from 'react';
 import { Card } from '@/components/ui/card';
 import { Task } from '@/lib/api/tasks';
+import { Sprint } from '@/lib/api/sprints';
 import { TrendingUp, BarChart3 } from 'lucide-react';
 
 interface DeliveryTrendChartProps {
   tasks?: Task[];
+  sprints?: Sprint[];
 }
 
 // Function to generate smooth cubic bezier SVG path from coordinate points
@@ -24,16 +26,38 @@ function getSmoothCurvePath(points: { x: number; y: number }[]): string {
   return path;
 }
 
-export function DeliveryTrendChart({ tasks = [] }: DeliveryTrendChartProps) {
+export function DeliveryTrendChart({ tasks = [], sprints = [] }: DeliveryTrendChartProps) {
   const [hoveredIdx, setHoveredIdx] = React.useState<number | null>(null);
 
   const trendData = React.useMemo(() => {
     if (!tasks || tasks.length === 0) return null;
 
+    const sprintMap = new Map<string, Sprint>();
+    if (sprints && sprints.length > 0) {
+      for (const s of sprints) {
+        if (s && s.id) {
+          sprintMap.set(s.id, s);
+        }
+      }
+    }
+
     // Group tasks by scheduled milestone / delivery month
     const monthMap = new Map<string, { total: number; done: number; label: string }>();
     for (const t of tasks) {
-      const rawDate = t.dueDate || t.startDate || t.createdAt;
+      const sId = t.sprintId || (t as any).sprint_id;
+      const sprint = sId ? sprintMap.get(sId) : null;
+      const rawDate =
+        t.dueDate ||
+        (t as any).due_date ||
+        t.startDate ||
+        (t as any).start_date ||
+        sprint?.endDate ||
+        (sprint as any)?.end_date ||
+        sprint?.startDate ||
+        (sprint as any)?.start_date ||
+        t.createdAt ||
+        (t as any).created_at;
+
       if (!rawDate) continue;
       const date = new Date(rawDate);
       if (isNaN(date.getTime())) continue;
@@ -52,20 +76,44 @@ export function DeliveryTrendChart({ tasks = [] }: DeliveryTrendChartProps) {
     }
 
     const sortedKeys = Array.from(monthMap.keys()).sort();
-    if (sortedKeys.length < 2) {
+    if (sortedKeys.length === 0) {
       return null;
     }
 
-    const nowKey = new Date().toISOString().slice(0, 7);
-    const historicalKeys = sortedKeys.filter((k) => k <= nowKey);
-    const selectedKeys = historicalKeys.length >= 2 ? historicalKeys : sortedKeys.slice(0, 7);
+    // If only 1 milestone month exists, construct a rolling 5-month trajectory to display progress
+    if (sortedKeys.length === 1) {
+      const singleKey = sortedKeys[0];
+      const [yearStr, monthStr] = singleKey.split('-');
+      const y = parseInt(yearStr, 10);
+      const m = parseInt(monthStr, 10) - 1;
+
+      const paddedData: { month: string; rate: number; total: number; done: number }[] = [];
+      for (let offset = 4; offset >= 1; offset--) {
+        const d = new Date(y, m - offset, 1);
+        const label = d.toLocaleString('en-US', { month: 'short', year: '2-digit' });
+        paddedData.push({ month: label, rate: 0, total: 0, done: 0 });
+      }
+
+      const activeEntry = monthMap.get(singleKey)!;
+      const activeRate = activeEntry.total > 0 ? Math.round((activeEntry.done / activeEntry.total) * 100) : 0;
+      paddedData.push({
+        month: activeEntry.label,
+        rate: activeRate,
+        total: activeEntry.total,
+        done: activeEntry.done,
+      });
+
+      return paddedData;
+    }
+
+    const selectedKeys = sortedKeys.length <= 7 ? sortedKeys : sortedKeys.slice(0, 7);
 
     return selectedKeys.map((k) => {
       const { total, done, label } = monthMap.get(k)!;
       const rate = total > 0 ? Math.round((done / total) * 100) : 0;
       return { month: label, rate, total, done };
     });
-  }, [tasks]);
+  }, [tasks, sprints]);
 
   return (
     <Card className="p-5 border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs hover:shadow-xs transition-shadow">
@@ -264,10 +312,10 @@ export function DeliveryTrendChart({ tasks = [] }: DeliveryTrendChartProps) {
         <div className="mt-6 flex flex-col items-center justify-center py-10 px-4 text-center rounded-xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30">
           <BarChart3 className="h-8 w-8 text-slate-300 dark:text-slate-600 mb-2" />
           <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-            Not enough historical milestones
+            No task activity recorded yet
           </p>
           <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1 max-w-xs">
-            Velocity charts activate automatically once tasks across two or more milestone months are scheduled.
+            Schedule tasks or link them to project sprints to automatically track delivery velocity over time.
           </p>
         </div>
       )}

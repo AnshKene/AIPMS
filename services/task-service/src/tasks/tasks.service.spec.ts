@@ -191,7 +191,7 @@ describe('TasksService', () => {
       vi.spyOn(service, 'findOne').mockResolvedValue(existingTask as any);
 
       const mockSingle = vi.fn().mockResolvedValue({ data: updatedTaskRow, error: null });
-      const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+      const mockSelect = vi.fn().mockReturnValue({ single: mockSingle, maybeSingle: mockSingle });
       const mockEq = vi.fn().mockReturnValue({ select: mockSelect });
       const mockUpdate = vi.fn().mockReturnValue({ eq: mockEq });
 
@@ -436,7 +436,7 @@ describe('TasksService', () => {
         };
 
         const mockSingle = vi.fn().mockResolvedValue({ data: updatedRow, error: null });
-        const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+        const mockSelect = vi.fn().mockReturnValue({ single: mockSingle, maybeSingle: mockSingle });
         const mockEq = vi.fn().mockReturnValue({ select: mockSelect });
         const mockUpdate = vi.fn().mockReturnValue({ eq: mockEq });
         const mockClient = { from: vi.fn().mockReturnValue({ update: mockUpdate }) };
@@ -570,7 +570,7 @@ describe('TasksService', () => {
           },
           error: null,
         });
-        const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+        const mockSelect = vi.fn().mockReturnValue({ single: mockSingle, maybeSingle: mockSingle });
         const mockEq = vi.fn().mockReturnValue({ select: mockSelect });
         const mockUpdate = vi.fn().mockReturnValue({ eq: mockEq });
         const mockClient = { from: vi.fn().mockReturnValue({ update: mockUpdate }) };
@@ -825,6 +825,7 @@ describe('TasksService', () => {
               eq: vi.fn().mockReturnValue({
                 select: vi.fn().mockReturnValue({
                   single: vi.fn().mockResolvedValue({ data: updatedRow, error: null }),
+                  maybeSingle: vi.fn().mockResolvedValue({ data: updatedRow, error: null }),
                 }),
               }),
             }),
@@ -980,6 +981,7 @@ describe('TasksService', () => {
                   eq: vi.fn().mockReturnValue({
                     select: vi.fn().mockReturnValue({
                       single: vi.fn().mockResolvedValue({ data: updatedTask, error: null }),
+                      maybeSingle: vi.fn().mockResolvedValue({ data: updatedTask, error: null }),
                     }),
                   }),
                 }),
@@ -1108,6 +1110,155 @@ describe('TasksService', () => {
             'Bearer viewer-token',
           ),
         ).rejects.toThrow('Viewers have read-only access and cannot create tasks.');
+      });
+
+      it('Team Lead being denied assignment to another team members (FAIL)', async () => {
+        const otherMemberId = 'other-member-999';
+        const mockClient = {
+          auth: {
+            getUser: vi.fn().mockResolvedValue({
+              data: { user: { id: leadUserId, app_metadata: { role: 'TEAM_MEMBER' } } },
+              error: null,
+            }),
+          },
+          from: vi.fn((table: string) => {
+            if (table === 'team_members') {
+              return {
+                select: vi.fn().mockReturnValue({
+                  eq: vi.fn().mockReturnValue({
+                    eq: vi.fn().mockImplementation((col: string, val: string) => {
+                      if (val === leadUserId) {
+                        return { maybeSingle: vi.fn().mockResolvedValue({ data: { role: 'TEAM_LEAD' }, error: null }) };
+                      }
+                      return { maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) };
+                    }),
+                  }),
+                }),
+              };
+            }
+            return {};
+          }),
+        };
+
+        vi.spyOn(service as any, 'getSupabaseClient').mockReturnValue(mockClient);
+
+        await expect(
+          service.create(
+            { projectId: projectAUuid, teamId: teamIdA, assigneeId: otherMemberId, title: 'Invalid Assignment' },
+            'Bearer lead-token',
+          ),
+        ).rejects.toThrow('Access Denied: Team Leads can only assign tasks to members of their assigned team.');
+      });
+
+      it('Team Lead cannot reassign task to a different team (FAIL)', async () => {
+        const existingTask = {
+          id: taskAUuid,
+          project_id: projectAUuid,
+          team_id: teamIdA,
+          title: 'Lead Task',
+          status: 'TODO',
+          priority: 'MEDIUM',
+        };
+
+        vi.spyOn(service, 'findOne').mockResolvedValue(service['formatTask'](existingTask) as any);
+
+        const mockClient = {
+          auth: {
+            getUser: vi.fn().mockResolvedValue({
+              data: { user: { id: leadUserId, app_metadata: { role: 'TEAM_MEMBER' } } },
+              error: null,
+            }),
+          },
+          from: vi.fn((table: string) => {
+            if (table === 'team_members') {
+              return {
+                select: vi.fn().mockReturnValue({
+                  eq: vi.fn().mockReturnValue({
+                    eq: vi.fn().mockReturnValue({
+                      maybeSingle: vi.fn().mockResolvedValue({ data: { role: 'TEAM_LEAD' }, error: null }),
+                    }),
+                  }),
+                }),
+              };
+            }
+            return {};
+          }),
+        };
+
+        vi.spyOn(service as any, 'getSupabaseClient').mockReturnValue(mockClient);
+
+        await expect(
+          service.update(
+            taskAUuid,
+            { teamId: teamIdB },
+            'Bearer lead-token',
+          ),
+        ).rejects.toThrow('Team Leads can only assign tasks within their own team.');
+      });
+
+      it('Missing team membership being denied safely (FAIL)', async () => {
+        const mockClient = {
+          auth: {
+            getUser: vi.fn().mockResolvedValue({
+              data: { user: { id: 'unaffiliated-user', app_metadata: { role: 'TEAM_MEMBER' } } },
+              error: null,
+            }),
+          },
+          from: vi.fn((table: string) => {
+            if (table === 'team_members') {
+              return {
+                select: vi.fn().mockReturnValue({
+                  eq: vi.fn().mockReturnValue({
+                    eq: vi.fn().mockReturnValue({
+                      maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+                    }),
+                  }),
+                }),
+              };
+            }
+            return {};
+          }),
+        };
+
+        vi.spyOn(service as any, 'getSupabaseClient').mockReturnValue(mockClient);
+
+        await expect(
+          service.create(
+            { projectId: projectAUuid, teamId: teamIdA, title: 'Non-Member Task' },
+            'Bearer random-token',
+          ),
+        ).rejects.toThrow('Team Members cannot create tasks or assign tasks to other users.');
+      });
+
+      it('Viewer cannot update tasks (FAIL)', async () => {
+        const existingTask = {
+          id: taskAUuid,
+          project_id: projectAUuid,
+          team_id: teamIdA,
+          title: 'Existing Task',
+          status: 'TODO',
+        };
+
+        vi.spyOn(service, 'findOne').mockResolvedValue(service['formatTask'](existingTask) as any);
+
+        const mockClient = {
+          auth: {
+            getUser: vi.fn().mockResolvedValue({
+              data: { user: { id: 'viewer-user-1', app_metadata: { role: 'VIEWER' } } },
+              error: null,
+            }),
+          },
+        };
+
+        vi.spyOn(service as any, 'getSupabaseClient').mockReturnValue(mockClient);
+
+        await expect(
+          service.update(
+            taskAUuid,
+            { status: TaskStatus.IN_PROGRESS },
+            'Bearer viewer-token',
+          ),
+        ).rejects.toThrow('Viewers have read-only access and cannot modify tasks.');
       });
     });
 

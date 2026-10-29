@@ -20,7 +20,7 @@ import {
 } from '@/lib/api/tasks';
 import { listProjects, listProjectMembers, type Project, type ProjectMember } from '@/lib/api/projects';
 import { listSprints, type Sprint } from '@/lib/api/sprints';
-import { listTeams, type Team } from '@/lib/api/teams';
+import { listTeams, listTeamMembers, type Team, type TeamMember } from '@/lib/api/teams';
 import { userDirectory } from '@/lib/auth/user-directory';
 import {
   Loader2,
@@ -104,6 +104,7 @@ export function TaskForm(props: TaskFormProps) {
   // External lookup datasets
   const [projects, setProjects] = React.useState<Project[]>([]);
   const [teams, setTeams] = React.useState<Team[]>([]);
+  const [teamMembers, setTeamMembers] = React.useState<TeamMember[]>([]);
   const [sprints, setSprints] = React.useState<Sprint[]>([]);
   const [projectMembers, setProjectMembers] = React.useState<ProjectMember[]>([]);
 
@@ -167,6 +168,7 @@ export function TaskForm(props: TaskFormProps) {
       if (!open || !form.projectId) {
         if (!isCancelled) {
           setProjectMembers([]);
+          setTeamMembers([]);
         }
         return;
       }
@@ -182,7 +184,27 @@ export function TaskForm(props: TaskFormProps) {
           setProjectMembers(membersRes.value || []);
         }
         if (teamsRes.status === 'fulfilled') {
-          setTeams(teamsRes.value.data || []);
+          const loadedTeams = teamsRes.value.data || [];
+          setTeams(loadedTeams);
+
+          // Authoritatively load members across these project teams
+          if (loadedTeams.length > 0) {
+            const memberPromises = loadedTeams.map((t) =>
+              listTeamMembers(t.id, { limit: 100 }).catch(() => ({ data: [], meta: { total: 0, page: 1, limit: 100, totalPages: 1 } })),
+            );
+            const tmSettled = await Promise.allSettled(memberPromises);
+            if (!isCancelled) {
+              const allMembers: TeamMember[] = [];
+              for (const r of tmSettled) {
+                if (r.status === 'fulfilled' && r.value?.data) {
+                  allMembers.push(...r.value.data);
+                }
+              }
+              setTeamMembers(allMembers);
+            }
+          } else {
+            setTeamMembers([]);
+          }
         }
         if (sprintsRes.status === 'fulfilled') {
           setSprints(sprintsRes.value || []);
@@ -251,15 +273,33 @@ export function TaskForm(props: TaskFormProps) {
       }
     });
 
-    // 3. Fallback to all active directory users if no project members yet
-    if (optionsMap.size === 0) {
+    // 3. Add members of project teams (or selected team)
+    const relevantTeamMembers = form.teamId
+      ? teamMembers.filter((tm) => tm.teamId === form.teamId)
+      : teamMembers;
+
+    relevantTeamMembers.forEach((tm) => {
+      const profile = userDirectory.getUser(tm.userId);
+      if (profile.status !== 'INACTIVE' && !optionsMap.has(tm.userId)) {
+        optionsMap.set(tm.userId, {
+          ...profile,
+          role: tm.role === 'TEAM_LEAD' ? 'TEAM_LEAD' : profile.role,
+          badge: tm.role === 'TEAM_LEAD' ? 'Team Lead' : 'Team Member',
+        });
+      }
+    });
+
+    // 4. If no explicit project members or team members (only project owner or none), also include active directory users
+    if (optionsMap.size <= 1) {
       userDirectory.getActiveKnownUsers().forEach((u) => {
-        optionsMap.set(u.id, u);
+        if (!optionsMap.has(u.id)) {
+          optionsMap.set(u.id, u);
+        }
       });
     }
 
     return Array.from(optionsMap.values());
-  }, [projects, form.projectId, projectMembers, directoryVersion]);
+  }, [projects, form.projectId, form.teamId, projectMembers, teamMembers, directoryVersion]);
 
   // Filtered teams for the current project
   const projectTeams = React.useMemo(() => {
