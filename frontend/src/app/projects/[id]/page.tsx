@@ -9,8 +9,12 @@ import { Button } from '@/components/ui/button';
 import { ProjectStatusBadge } from '@/components/projects/ProjectStatusBadge';
 import { ProjectForm } from '@/components/projects/ProjectForm';
 import { ProjectIntelligence } from '@/components/projects/ProjectIntelligence';
+import { ProjectMembersCard } from '@/components/projects/ProjectMembersCard';
+import { TeamWorkloadSection } from '@/components/projects/TeamWorkloadSection';
+import { UserSelector } from '@/components/common/UserSelector';
 import { NotFoundState, ErrorState } from '@/components/ui/error-state';
 import { useAuth } from '@/lib/auth/auth-context';
+import { userDirectory } from '@/lib/auth/user-directory';
 import {
   Loader2,
   Pencil,
@@ -27,6 +31,8 @@ import {
   ChevronRight,
   ExternalLink,
   UserCheck,
+  Copy,
+  Check,
 } from 'lucide-react';
 import {
   getProject,
@@ -34,7 +40,9 @@ import {
   archiveProject,
   unarchiveProject,
   transferProjectOwnership,
+  listProjectMembers,
   type Project,
+  type ProjectMember,
   type UpdateProjectPayload,
 } from '@/lib/api/projects';
 import { listTasks, type Task } from '@/lib/api/tasks';
@@ -233,6 +241,22 @@ function TransferOwnershipButton({
 
   const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+  const directoryVersion = React.useSyncExternalStore(
+    (cb) => userDirectory.subscribe(cb),
+    () => userDirectory.getVersion(),
+    () => 0,
+  );
+
+  const candidateOwners = React.useMemo(() => {
+    return userDirectory
+      .getActiveKnownUsers()
+      .filter((u) => u.id !== currentOwnerId)
+      .map((u) => ({
+        ...u,
+        badge: u.role === 'ADMIN' ? 'Admin' : u.role === 'PROJECT_OWNER' ? 'Project Owner' : u.role === 'PROJECT_MANAGER' ? 'Project Manager' : 'Member',
+      }));
+  }, [currentOwnerId, directoryVersion]);
+
   async function handleTransfer() {
     const trimmed = newOwnerId.trim();
     if (!trimmed) {
@@ -252,6 +276,7 @@ function TransferOwnershipButton({
     setError(null);
     try {
       const result = await transferProjectOwnership(projectId, { newOwnerId: trimmed });
+      void userDirectory.fetchDirectory();
       onTransferred(result);
       setOpen(false);
       setNewOwnerId('');
@@ -283,23 +308,23 @@ function TransferOwnershipButton({
   }
 
   return (
-    <div className="flex flex-col gap-2.5 p-3.5 rounded-xl border border-purple-200 dark:border-purple-900 bg-purple-50/50 dark:bg-purple-950/30 text-left min-w-[280px]">
+    <div className="flex flex-col gap-2.5 p-3.5 rounded-xl border border-purple-200 dark:border-purple-900 bg-purple-50/50 dark:bg-purple-950/30 text-left min-w-[320px]">
       <div>
         <p className="text-xs font-semibold text-purple-900 dark:text-purple-200">
           Transfer &ldquo;{projectName}&rdquo; Ownership
         </p>
         <p className="text-[11px] text-purple-700 dark:text-purple-300 mt-0.5 leading-relaxed">
-          Specify the Supabase user UUID who will become the new Project Owner.
+          Select or search for the user who will become the new Project Owner.
         </p>
       </div>
 
-      <input
-        type="text"
-        placeholder="New owner user UUID"
+      <UserSelector
         value={newOwnerId}
-        onChange={(e) => setNewOwnerId(e.target.value)}
+        onChange={setNewOwnerId}
+        options={candidateOwners}
+        placeholder="Select new owner..."
         disabled={loading}
-        className="h-8 px-2.5 text-xs font-mono rounded-md border border-purple-300 dark:border-purple-700 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-600"
+        excludeUserIds={currentOwnerId ? [currentOwnerId] : []}
       />
 
       {error && <p className="text-xs text-red-600">{error}</p>}
@@ -341,10 +366,14 @@ export default function ProjectDetailPage() {
   const { user } = useAuth();
 
   const [project, setProject] = React.useState<Project | null>(null);
+  const [projectMembers, setProjectMembers] = React.useState<ProjectMember[]>([]);
 
   const isOwner = Boolean(user && project && project.ownerId === user.id);
   const isSystemAdmin = user?.role === 'ADMIN';
-  const canManageProject = isSystemAdmin || isOwner;
+  const isAssignedPM = projectMembers.some(
+    (m) => m.userId === user?.id && m.role === 'PROJECT_MANAGER',
+  );
+  const canManageProject = isSystemAdmin || isOwner || isAssignedPM;
   const canTransferOwnership = !project?.status || project.status !== 'ARCHIVED' ? (isSystemAdmin || isOwner) : false;
   const [tasks, setTasks] = React.useState<Task[]>([]);
   const [sprints, setSprints] = React.useState<Sprint[]>([]);
@@ -355,6 +384,7 @@ export default function ProjectDetailPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [notFound, setNotFound] = React.useState(false);
   const [refreshKey, setRefreshKey] = React.useState(0);
+  const [copiedId, setCopiedId] = React.useState(false);
 
   React.useEffect(() => {
     if (!id) return;
@@ -364,12 +394,13 @@ export default function ProjectDetailPage() {
       setLoading(true);
       setError(null);
       try {
-        const [projRes, tasksRes, sprintsRes, risksRes, teamsRes] = await Promise.allSettled([
+        const [projRes, tasksRes, sprintsRes, risksRes, teamsRes, membersRes] = await Promise.allSettled([
           getProject(id),
           listTasks({ projectId: id, limit: 200 }),
           listSprints({ projectId: id }),
           listRisks({ projectId: id }),
           listTeams(),
+          listProjectMembers(id),
         ]);
 
         if (isCancelled) return;
@@ -400,6 +431,10 @@ export default function ProjectDetailPage() {
 
         if (teamsRes.status === 'fulfilled') {
           setTeams(teamsRes.value.data);
+        }
+
+        if (membersRes.status === 'fulfilled') {
+          setProjectMembers(membersRes.value);
         }
       } catch (err) {
         if (!isCancelled) {
@@ -529,9 +564,27 @@ export default function ProjectDetailPage() {
                   <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">{project.name}</h1>
                   <ProjectStatusBadge status={project.status} />
                 </div>
-                <p className="text-xs text-slate-400 dark:text-slate-500 font-mono mt-0.5">
-                  ID: {project.id}
-                </p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <p className="text-xs text-slate-400 dark:text-slate-500 font-mono">
+                    ID: {project.id}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(project.id);
+                      setCopiedId(true);
+                      setTimeout(() => setCopiedId(false), 2000);
+                    }}
+                    title="Copy Project UUID"
+                    className="text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 p-0.5 rounded transition-colors"
+                  >
+                    {copiedId ? (
+                      <Check className="h-3.5 w-3.5 text-emerald-500" />
+                    ) : (
+                      <Copy className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
             {project.description && (
@@ -746,6 +799,13 @@ export default function ProjectDetailPage() {
               </CardContent>
             </Card>
 
+            {/* Team Workload & Task Distribution */}
+            <TeamWorkloadSection
+              tasks={tasks}
+              members={projectMembers}
+              ownerId={project.ownerId}
+            />
+
             {/* Task Summary Breakdown */}
             <Card className="rounded-2xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
               <CardHeader className="flex flex-row items-center justify-between pb-3">
@@ -866,6 +926,15 @@ export default function ProjectDetailPage() {
           <div className="space-y-6">
             {/* AI Intelligence Panel */}
             <ProjectIntelligence projectId={project.id} projectName={project.name} />
+
+            {/* Project Members & Assignments */}
+            <ProjectMembersCard
+              projectId={project.id}
+              projectOwnerId={project.ownerId}
+              isOwner={isOwner}
+              isAdmin={isSystemAdmin}
+              onMembersUpdated={setProjectMembers}
+            />
 
             {/* Team Context Widget */}
             <Card className="rounded-2xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">

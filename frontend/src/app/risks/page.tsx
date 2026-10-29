@@ -63,7 +63,7 @@ function RisksWorkspaceContent() {
   const searchParams = useSearchParams();
   const initialProjectId = searchParams.get('projectId') || '';
 
-  const canManage = user?.role === 'ADMIN' || user?.role === 'PROJECT_MANAGER';
+  const canManage = user?.role === 'ADMIN' || user?.role === 'PROJECT_OWNER' || user?.role === 'PROJECT_MANAGER';
 
   const [risks, setRisks] = React.useState<Risk[]>([]);
   const [projects, setProjects] = React.useState<Project[]>([]);

@@ -62,8 +62,8 @@ function DashboardContent() {
     (searchParams.get('tool') as AIToolType) ||
     (searchParams.get('action') === 'ask_ai' ? 'query' : null);
 
-  // RBAC permission check for project creation
-  const canCreateProject = user?.role === 'ADMIN' || user?.role === 'PROJECT_MANAGER';
+  // RBAC permission check for project creation (PM cannot create projects by default)
+  const canCreateProject = user?.role === 'ADMIN' || user?.role === 'PROJECT_OWNER';
 
   const fetchDashboardData = React.useCallback(async (isSilentRefresh = false) => {
     if (isSilentRefresh) {
@@ -152,20 +152,49 @@ function DashboardContent() {
         return (r.riskScore ?? 0) >= 3 || r.probability === 'MEDIUM' || r.impact === 'MEDIUM';
       }).length;
 
-      // Sprint health attribution: track projects that have high open risks
-      const highRiskProjectIds = new Set(highRisksList.map((r) => r.projectId).filter(Boolean));
+      // Critical risk project IDs: only projects with CRITICAL open risks (riskScore >= 9, or OPEN with HIGH impact and HIGH probability)
+      const criticalRiskProjectIds = new Set(
+        openRisksList
+          .filter((r) => (r.riskScore ?? 0) >= 9 || (r.probability === 'HIGH' && r.impact === 'HIGH' && r.status === 'OPEN'))
+          .map((r) => r.projectId)
+          .filter(Boolean),
+      );
 
       const activeSprintsList = sprintList.filter((s) => s.status === 'ACTIVE');
       const activeSprintsCount = activeSprintsList.length;
 
-      const onTrackSprintsCount = activeSprintsList.filter((s) => {
-        const endDate = new Date(s.endDate).getTime();
-        const isPastDue = !isNaN(endDate) && endDate < Date.now();
-        const hasHighRisk = s.projectId ? highRiskProjectIds.has(s.projectId) : false;
-        return !isPastDue && !hasHighRisk;
-      }).length;
+      // Group tasks by sprint ID to inspect sprint-level execution blockers
+      const sprintBlockedMap = new Map<string, number>();
+      taskList.forEach((t) => {
+        const sWithFallbacks = t as Task & { sprint_id?: string | null };
+        const sId = t.sprintId || sWithFallbacks.sprint_id;
+        if (sId && t.status === 'BLOCKED') {
+          sprintBlockedMap.set(sId, (sprintBlockedMap.get(sId) || 0) + 1);
+        }
+      });
 
-      const atRiskSprintsCount = Math.max(0, activeSprintsCount - onTrackSprintsCount);
+      // Classify active sprints:
+      // - Off Track: past due (endDate < Date.now())
+      // - At Risk: has blocked tasks OR project has critical unmitigated risk (score >= 9)
+      // - On Track: actively progressing, no blockers, on schedule
+      let onTrackSprintsCount = 0;
+      let atRiskSprintsCount = 0;
+
+      activeSprintsList.forEach((s) => {
+        const sWithFallbacks = s as Sprint & { end_date?: string; project_id?: string };
+        const endDateVal = s.endDate || sWithFallbacks.end_date;
+        const endDate = endDateVal ? new Date(endDateVal).getTime() : NaN;
+        const isPastDue = !isNaN(endDate) && endDate < Date.now();
+        const blockedTasks = sprintBlockedMap.get(s.id) || 0;
+        const sProjId = s.projectId || sWithFallbacks.project_id;
+        const hasCriticalRisk = sProjId ? criticalRiskProjectIds.has(sProjId) : false;
+
+        if (isPastDue || blockedTasks > 0 || hasCriticalRisk) {
+          atRiskSprintsCount++;
+        } else {
+          onTrackSprintsCount++;
+        }
+      });
 
       setMetrics({
         totalProjects: totalProjectsCount,
@@ -239,7 +268,13 @@ function DashboardContent() {
   const sprintOnTrack = metrics?.onTrackSprints ?? 0;
   const sprintAtRisk = metrics?.atRiskSprints ?? 0;
   const sprintPlanned = sprints.filter((s) => s.status === 'PLANNED').length;
-  const sprintCancelled = sprints.filter((s) => s.status === 'CANCELLED').length;
+  const sprintOffTrack = sprints.filter((s) => {
+    if (s.status !== 'ACTIVE') return false;
+    const sWithFallbacks = s as Sprint & { end_date?: string };
+    const endDateVal = s.endDate || sWithFallbacks.end_date;
+    const endDate = endDateVal ? new Date(endDateVal).getTime() : NaN;
+    return !isNaN(endDate) && endDate < now;
+  }).length;
 
   // Dynamic user greeting name from auth context
   const rawName = user?.name?.trim() || '';
@@ -356,11 +391,11 @@ function DashboardContent() {
               <div className="lg:col-span-2 space-y-6">
                 {/* Row 1: Delivery Trend Chart & Sprint Health */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <DeliveryTrendChart tasks={filteredTasks} />
+                  <DeliveryTrendChart tasks={tasks} sprints={sprints} />
                   <SprintHealthCard
                     onTrack={sprintOnTrack}
                     atRisk={sprintAtRisk}
-                    offTrack={sprintCancelled}
+                    offTrack={sprintOffTrack}
                     notStarted={sprintPlanned}
                   />
                 </div>

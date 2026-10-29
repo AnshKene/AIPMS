@@ -373,6 +373,15 @@ describe('RisksService', () => {
 
     it('should reject risk creation if caller has VIEWER role', async () => {
       const viewerToken = makeJwt({ sub: 'viewer-user', role: 'VIEWER' });
+      const mockClient = {
+        auth: {
+          getUser: vi.fn().mockResolvedValue({
+            data: { user: { id: 'viewer-user', app_metadata: { role: 'VIEWER' } } },
+            error: null,
+          }),
+        },
+      };
+      vi.spyOn(service as any, 'getSupabaseClient').mockReturnValue(mockClient as any);
 
       await expect(
         service.create(
@@ -395,6 +404,12 @@ describe('RisksService', () => {
       };
 
       const mockClient = {
+        auth: {
+          getUser: vi.fn().mockResolvedValue({
+            data: { user: { id: 'normal-user', app_metadata: { role: 'TEAM_MEMBER' } } },
+            error: null,
+          }),
+        },
         rpc: vi.fn().mockResolvedValue({ data: true, error: null }),
         from: vi.fn().mockReturnValue({ insert: vi.fn().mockReturnValue(insertMock) }),
       };
@@ -439,6 +454,16 @@ describe('RisksService', () => {
 
     it('should reject risk update and deletion for VIEWER role', async () => {
       const viewerToken = makeJwt({ sub: 'viewer-user', role: 'VIEWER' });
+      const mockClient = {
+        auth: {
+          getUser: vi.fn().mockResolvedValue({
+            data: { user: { id: 'viewer-user', app_metadata: { role: 'VIEWER' } } },
+            error: null,
+          }),
+        },
+      };
+      vi.spyOn(service as any, 'getSupabaseClient').mockReturnValue(mockClient as any);
+
       vi.spyOn(service, 'findOne').mockResolvedValue({
         id: validUuid,
         project_id: projectUuid,
@@ -453,6 +478,66 @@ describe('RisksService', () => {
       await expect(service.remove(validUuid, viewerToken)).rejects.toThrow(
         'Access Denied: Viewers cannot delete risks',
       );
+    });
+
+    describe('DEFECT-07: JWT Verification & Admin Shortcut Elimination', () => {
+      it('should reject forged ADMIN payload when signature is unverified or invalid', async () => {
+        const forgedToken = makeJwt({ sub: 'attacker-id', role: 'ADMIN' });
+        const mockClient = {
+          auth: {
+            getUser: vi.fn().mockResolvedValue({
+              data: null,
+              error: { message: 'invalid signature' },
+            }),
+          },
+        };
+        vi.spyOn(service as any, 'getSupabaseClient').mockReturnValue(mockClient as any);
+
+        await expect(
+          service.create(
+            {
+              project_id: projectUuid,
+              title: 'Forged Admin Risk',
+              probability: RiskProbability.LOW,
+              impact: RiskImpact.LOW,
+            },
+            forgedToken,
+          ),
+        ).rejects.toThrow('Invalid or expired authentication token');
+      });
+
+      it('should NOT bypass project access when non-designated user has role ADMIN in payload', async () => {
+        const fakeAdminToken = makeJwt({ sub: 'attacker-id', role: 'ADMIN', email: 'attacker@evil.com' });
+        const mockClient = {
+          auth: {
+            getUser: vi.fn().mockResolvedValue({
+              data: {
+                user: { id: 'attacker-id', email: 'attacker@evil.com', app_metadata: { role: 'ADMIN' } },
+              },
+              error: null,
+            }),
+          },
+          rpc: vi.fn().mockResolvedValue({ data: false, error: null }),
+        };
+        vi.spyOn(service as any, 'getSupabaseClient').mockReturnValue(mockClient as any);
+
+        await expect(
+          service.create(
+            {
+              project_id: projectUuid,
+              title: 'Attempted Admin Bypass',
+              probability: RiskProbability.LOW,
+              impact: RiskImpact.LOW,
+            },
+            fakeAdminToken,
+          ),
+        ).rejects.toThrow('Access Denied: You do not have permission to access this project');
+
+        // Verify RPC was called because user is NOT the designated admin!
+        expect(mockClient.rpc).toHaveBeenCalledWith('aipms_user_has_project_access', {
+          p_project_id: projectUuid,
+        });
+      });
     });
   });
 });

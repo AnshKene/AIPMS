@@ -205,4 +205,81 @@ describe('TeamsService', () => {
       ).rejects.toThrow(ConflictException);
     });
   });
+
+  describe('DEFECT-05 & Risk C: Cross-project Team Mutations and Scoping', () => {
+    const projectA = '11111111-1111-4111-a111-111111111111';
+    const projectB = '22222222-2222-4222-a222-222222222222';
+    const teamB = '33333333-3333-4333-a333-333333333333';
+
+    it('should reject Project Manager assigned to Project A modifying a team in Project B', async () => {
+      vi.spyOn(service, 'findOneTeam').mockResolvedValue({
+        id: teamB,
+        projectId: projectB,
+        name: 'Project B Team',
+      } as any);
+
+      const mockClient = {
+        auth: {
+          getUser: vi.fn().mockResolvedValue({
+            data: { user: { id: 'pm-user-a', app_metadata: { role: 'PROJECT_MANAGER' } } },
+            error: null,
+          }),
+        },
+        from: vi.fn((table: string) => {
+          if (table === 'project_members') {
+            return {
+              select: vi.fn().mockReturnValue({
+                eq: vi.fn().mockReturnValue({
+                  eq: vi.fn().mockReturnValue({
+                    // PM is NOT in Project B
+                    maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+                  }),
+                }),
+              }),
+            };
+          }
+          return {
+            select: vi.fn().mockReturnValue({ maybeSingle: vi.fn().mockResolvedValue({ data: null }) }),
+          };
+        }),
+      };
+
+      vi.spyOn(service as any, 'getSupabaseClient').mockReturnValue(mockClient);
+
+      await expect(
+        service.updateTeam(teamB, { name: 'Compromised Name' }, 'Bearer pm-token'),
+      ).rejects.toThrow('Access Denied: You do not have permission to manage teams in this project.');
+
+      await expect(
+        service.removeTeam(teamB, 'Bearer pm-token'),
+      ).rejects.toThrow('Access Denied: You do not have permission to manage teams in this project.');
+
+      await expect(
+        service.addMember(teamB, { userId: validUserUuid }, 'Bearer pm-token'),
+      ).rejects.toThrow('Access Denied: You do not have permission to manage teams in this project.');
+    });
+
+    it('should reject Viewer attempting to mutate teams', async () => {
+      vi.spyOn(service, 'findOneTeam').mockResolvedValue({
+        id: teamB,
+        projectId: projectB,
+        name: 'Project B Team',
+      } as any);
+
+      const mockClient = {
+        auth: {
+          getUser: vi.fn().mockResolvedValue({
+            data: { user: { id: 'viewer-user', app_metadata: { role: 'VIEWER' } } },
+            error: null,
+          }),
+        },
+      };
+
+      vi.spyOn(service as any, 'getSupabaseClient').mockReturnValue(mockClient);
+
+      await expect(
+        service.updateTeam(teamB, { name: 'Viewer Edit' }, 'Bearer viewer-token'),
+      ).rejects.toThrow('Viewers have read-only access and cannot modify teams.');
+    });
+  });
 });

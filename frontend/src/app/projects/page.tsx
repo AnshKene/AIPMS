@@ -65,8 +65,8 @@ export default function ProjectsPage() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
-  // RBAC check: only ADMIN and PROJECT_MANAGER can create projects
-  const canCreateProject = user?.role === 'ADMIN' || user?.role === 'PROJECT_MANAGER';
+  // RBAC check: only ADMIN and PROJECT_OWNER can create projects (Project Managers cannot create projects by default)
+  const canCreateProject = user?.role === 'ADMIN' || user?.role === 'PROJECT_OWNER';
 
   React.useEffect(() => {
     let isCancelled = false;
@@ -320,7 +320,11 @@ export default function ProjectsPage() {
             <EmptyState
               icon={<FolderOpen className="h-6 w-6" />}
               title="No projects yet"
-              description="Create your first project to start organizing teams, tasks, sprints, and delivery."
+              description={
+                canCreateProject
+                  ? "Create your first project to start organizing teams, tasks, sprints, and delivery."
+                  : "No projects have been assigned to you yet. A Project Owner or System Administrator will assign you to a project workspace."
+              }
               action={
                 canCreateProject ? (
                   <ProjectForm

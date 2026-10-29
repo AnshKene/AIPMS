@@ -11,8 +11,13 @@ build/
 .env.local
 *.env
 
-# Logs
+# Logs & Test artifacts
 *.log
+playwright-report/
+test-results/
+frontend/playwright-report/
+frontend/test-results/
+scratch/
 
 # OS / Editor files
 .DS_Store
@@ -20,3 +25,4 @@ Thumbs.db
 .vscode/
 .idea/
 memory.md
+

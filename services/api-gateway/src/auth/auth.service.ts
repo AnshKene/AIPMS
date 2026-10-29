@@ -62,6 +62,18 @@ export class AuthService {
     });
   }
 
+  async getDirectory(authHeader?: string) {
+    const headers: Record<string, string> = {};
+    if (authHeader) {
+      headers['authorization'] = authHeader;
+    }
+
+    return this.forwardRequest('/api/auth/directory', {
+      method: 'GET',
+      headers,
+    });
+  }
+
   async updateUserRole(id: string, role: string, authHeader?: string) {
     const headers: Record<string, string> = {};
     if (authHeader) {
@@ -72,6 +84,42 @@ export class AuthService {
       method: 'PATCH',
       headers,
       body: { role },
+    });
+  }
+
+  async deactivateUser(id: string, authHeader?: string) {
+    const headers: Record<string, string> = {};
+    if (authHeader) {
+      headers['authorization'] = authHeader;
+    }
+
+    return this.forwardRequest(`/api/auth/users/${id}/deactivate`, {
+      method: 'POST',
+      headers,
+    });
+  }
+
+  async reactivateUser(id: string, authHeader?: string) {
+    const headers: Record<string, string> = {};
+    if (authHeader) {
+      headers['authorization'] = authHeader;
+    }
+
+    return this.forwardRequest(`/api/auth/users/${id}/reactivate`, {
+      method: 'POST',
+      headers,
+    });
+  }
+
+  async deleteUser(id: string, authHeader?: string) {
+    const headers: Record<string, string> = {};
+    if (authHeader) {
+      headers['authorization'] = authHeader;
+    }
+
+    return this.forwardRequest(`/api/auth/users/${id}`, {
+      method: 'DELETE',
+      headers,
     });
   }
 

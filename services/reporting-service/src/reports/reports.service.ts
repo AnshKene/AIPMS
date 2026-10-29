@@ -188,11 +188,28 @@ export class ReportsService {
     return this.supabase;
   }
 
+  private async ensureProjectAccess(client: SupabaseClient, projectId: string): Promise<void> {
+    const { data: project, error } = await client
+      .from('projects')
+      .select('id')
+      .eq('id', projectId)
+      .maybeSingle();
+
+    if (error) {
+      this.logger.error(`Failed to verify project access for ${projectId}: ${error.message}`);
+      throw new BadRequestException(error.message);
+    }
+    if (!project) {
+      throw new NotFoundException(`Project with ID '${projectId}' not found or access denied`);
+    }
+  }
+
   // ─── Task Report ────────────────────────────────────────────────────────────
 
   async getTasksReport(projectId: string, authHeader?: string): Promise<TasksReport> {
     this.validateUuid(projectId);
     const client = this.getSupabaseClient(authHeader);
+    await this.ensureProjectAccess(client, projectId);
 
     const { data, error } = await client
       .from('tasks')
@@ -251,6 +268,7 @@ export class ReportsService {
   async getSprintsReport(projectId: string, authHeader?: string): Promise<SprintsReport> {
     this.validateUuid(projectId);
     const client = this.getSupabaseClient(authHeader);
+    await this.ensureProjectAccess(client, projectId);
 
     const { data, error } = await client
       .from('sprints')
@@ -290,6 +308,7 @@ export class ReportsService {
   async getRisksReport(projectId: string, authHeader?: string): Promise<RisksReport> {
     this.validateUuid(projectId);
     const client = this.getSupabaseClient(authHeader);
+    await this.ensureProjectAccess(client, projectId);
 
     const { data, error } = await client
       .from('risks')
@@ -392,16 +411,18 @@ export class ReportsService {
     }
 
     const projectRow = projectData?.data ?? null;
-    const projectInfo: ProjectInfo | null = projectRow
-      ? {
-          id: projectRow.id,
-          name: projectRow.name,
-          status: projectRow.status,
-          start_date: projectRow.start_date ?? null,
-          end_date: projectRow.end_date ?? null,
-          owner_id: projectRow.owner_id ?? null,
-        }
-      : null;
+    if (!projectRow) {
+      throw new NotFoundException(`Project with ID '${projectId}' not found or access denied`);
+    }
+
+    const projectInfo: ProjectInfo = {
+      id: projectRow.id,
+      name: projectRow.name,
+      status: projectRow.status,
+      start_date: projectRow.start_date ?? null,
+      end_date: projectRow.end_date ?? null,
+      owner_id: projectRow.owner_id ?? null,
+    };
 
     const tasks = tasksData.data ?? [];
     const sprints = sprintsData.data ?? [];

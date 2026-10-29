@@ -253,8 +253,7 @@ describe('SprintsService', () => {
         status: 'ACTIVE',
       };
 
-      const mockSingle = vi.fn().mockResolvedValue({ data: updatedRow, error: null });
-      const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+      const mockSelect = vi.fn().mockResolvedValue({ data: [updatedRow], error: null });
       const mockEq = vi.fn().mockReturnValue({ select: mockSelect });
       const mockUpdate = vi.fn().mockReturnValue({ eq: mockEq });
 
@@ -307,8 +306,7 @@ describe('SprintsService', () => {
         status: 'COMPLETED',
       };
 
-      const mockSingle = vi.fn().mockResolvedValue({ data: updatedRow, error: null });
-      const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+      const mockSelect = vi.fn().mockResolvedValue({ data: [updatedRow], error: null });
       const mockEq = vi.fn().mockReturnValue({ select: mockSelect });
       const mockUpdate = vi.fn().mockReturnValue({ eq: mockEq });
 
@@ -343,8 +341,7 @@ describe('SprintsService', () => {
         status: 'CANCELLED',
       };
 
-      const mockSingle = vi.fn().mockResolvedValue({ data: updatedRow, error: null });
-      const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+      const mockSelect = vi.fn().mockResolvedValue({ data: [updatedRow], error: null });
       const mockEq = vi.fn().mockReturnValue({ select: mockSelect });
       const mockUpdate = vi.fn().mockReturnValue({ eq: mockEq });
 
@@ -367,8 +364,7 @@ describe('SprintsService', () => {
         status: 'CANCELLED',
       };
 
-      const mockSingle = vi.fn().mockResolvedValue({ data: updatedRow, error: null });
-      const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+      const mockSelect = vi.fn().mockResolvedValue({ data: [updatedRow], error: null });
       const mockEq = vi.fn().mockReturnValue({ select: mockSelect });
       const mockUpdate = vi.fn().mockReturnValue({ eq: mockEq });
 
@@ -387,6 +383,78 @@ describe('SprintsService', () => {
       } as any);
 
       await expect(service.cancel(validUuid)).rejects.toThrow(ConflictException);
+    });
+  });
+
+  describe('DEFECT-05: Cross-project Sprint Mutations by unassigned PM', () => {
+    const projectA = '11111111-1111-4111-a111-111111111111';
+    const projectB = '22222222-2222-4222-a222-222222222222';
+    const sprintB = '33333333-3333-4333-a333-333333333333';
+
+    it('should reject unassigned Project Manager attempting to start or cancel sprint in Project B', async () => {
+      vi.spyOn(service, 'findOne').mockResolvedValue({
+        id: sprintB,
+        project_id: projectB,
+        status: SprintStatus.PLANNED,
+      } as any);
+
+      const mockClient = {
+        auth: {
+          getUser: vi.fn().mockResolvedValue({
+            data: { user: { id: 'pm-user-a', app_metadata: { role: 'PROJECT_MANAGER' } } },
+            error: null,
+          }),
+        },
+        from: vi.fn((table: string) => {
+          if (table === 'project_members') {
+            return {
+              select: vi.fn().mockReturnValue({
+                eq: vi.fn().mockReturnValue({
+                  eq: vi.fn().mockReturnValue({
+                    // PM is NOT in Project B
+                    maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+                  }),
+                }),
+              }),
+            };
+          }
+          if (table === 'projects') {
+            return {
+              select: vi.fn().mockReturnValue({
+                eq: vi.fn().mockReturnValue({
+                  maybeSingle: vi.fn().mockResolvedValue({ data: { owner_id: 'other-owner' }, error: null }),
+                }),
+              }),
+            };
+          }
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                maybeSingle: vi.fn().mockResolvedValue({ data: null }),
+              }),
+              maybeSingle: vi.fn().mockResolvedValue({ data: null }),
+            }),
+          };
+        }),
+      };
+
+      vi.spyOn(service as any, 'getSupabaseClient').mockReturnValue(mockClient);
+
+      await expect(
+        service.start(sprintB, 'Bearer pm-token'),
+      ).rejects.toThrow('Access Denied: You do not have permission to manage sprints in this project.');
+
+      await expect(
+        service.cancel(sprintB, 'Bearer pm-token'),
+      ).rejects.toThrow('Access Denied: You do not have permission to manage sprints in this project.');
+
+      await expect(
+        service.update(sprintB, { name: 'Compromised Sprint' }, 'Bearer pm-token'),
+      ).rejects.toThrow('Access Denied: You do not have permission to manage sprints in this project.');
+
+      await expect(
+        service.remove(sprintB, 'Bearer pm-token'),
+      ).rejects.toThrow('Access Denied: You do not have permission to manage sprints in this project.');
     });
   });
 });

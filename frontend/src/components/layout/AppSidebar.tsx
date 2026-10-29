@@ -26,7 +26,7 @@ import {
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import { useAuth } from '@/lib/auth/auth-context';
-import type { Role } from '@/lib/auth/auth-storage';
+import { type Role, isDesignatedAdmin } from '@/lib/auth/auth-storage';
 import { AccountModal } from './AccountModal';
 
 export interface NavItem {
@@ -42,9 +42,9 @@ export const workspaceNavItems: NavItem[] = [
   { title: 'Projects', href: '/projects', icon: FolderKanban },
   { title: 'Tasks', href: '/tasks', icon: CheckSquare },
   { title: 'Sprints', href: '/sprints', icon: Zap },
-  { title: 'Teams', href: '/teams', icon: Users, roles: ['ADMIN', 'PROJECT_MANAGER', 'TEAM_MEMBER', 'VIEWER'] },
+  { title: 'Teams', href: '/teams', icon: Users, roles: ['ADMIN', 'PROJECT_OWNER', 'PROJECT_MANAGER', 'TEAM_MEMBER', 'VIEWER'] },
   { title: 'Risks', href: '/risks', icon: AlertTriangle },
-  { title: 'Reports', href: '/reports', icon: BarChart3, roles: ['ADMIN', 'PROJECT_MANAGER', 'TEAM_MEMBER', 'VIEWER'] },
+  { title: 'Reports', href: '/reports', icon: BarChart3, roles: ['ADMIN', 'PROJECT_OWNER', 'PROJECT_MANAGER', 'TEAM_MEMBER', 'VIEWER'] },
 ];
 
 export const adminNavItems: NavItem[] = [
@@ -291,7 +291,7 @@ export function AppSidebar({ className, isMobile = false, onNavigate }: AppSideb
           </div>
 
           {/* Administration Section (ADMIN only) */}
-          {userRole === 'ADMIN' && (
+          {userRole === 'ADMIN' && isDesignatedAdmin(user) && (
             <>
               <Separator className="bg-slate-100 dark:bg-slate-800/80 my-1.5" />
               <div className="space-y-1">
