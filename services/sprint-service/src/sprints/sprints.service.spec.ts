@@ -253,8 +253,7 @@ describe('SprintsService', () => {
         status: 'ACTIVE',
       };
 
-      const mockSingle = vi.fn().mockResolvedValue({ data: updatedRow, error: null });
-      const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+      const mockSelect = vi.fn().mockResolvedValue({ data: [updatedRow], error: null });
       const mockEq = vi.fn().mockReturnValue({ select: mockSelect });
       const mockUpdate = vi.fn().mockReturnValue({ eq: mockEq });
 
@@ -307,8 +306,7 @@ describe('SprintsService', () => {
         status: 'COMPLETED',
       };
 
-      const mockSingle = vi.fn().mockResolvedValue({ data: updatedRow, error: null });
-      const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+      const mockSelect = vi.fn().mockResolvedValue({ data: [updatedRow], error: null });
       const mockEq = vi.fn().mockReturnValue({ select: mockSelect });
       const mockUpdate = vi.fn().mockReturnValue({ eq: mockEq });
 
@@ -343,8 +341,7 @@ describe('SprintsService', () => {
         status: 'CANCELLED',
       };
 
-      const mockSingle = vi.fn().mockResolvedValue({ data: updatedRow, error: null });
-      const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+      const mockSelect = vi.fn().mockResolvedValue({ data: [updatedRow], error: null });
       const mockEq = vi.fn().mockReturnValue({ select: mockSelect });
       const mockUpdate = vi.fn().mockReturnValue({ eq: mockEq });
 
@@ -367,8 +364,7 @@ describe('SprintsService', () => {
         status: 'CANCELLED',
       };
 
-      const mockSingle = vi.fn().mockResolvedValue({ data: updatedRow, error: null });
-      const mockSelect = vi.fn().mockReturnValue({ single: mockSingle });
+      const mockSelect = vi.fn().mockResolvedValue({ data: [updatedRow], error: null });
       const mockEq = vi.fn().mockReturnValue({ select: mockSelect });
       const mockUpdate = vi.fn().mockReturnValue({ eq: mockEq });
 
@@ -422,8 +418,22 @@ describe('SprintsService', () => {
               }),
             };
           }
+          if (table === 'projects') {
+            return {
+              select: vi.fn().mockReturnValue({
+                eq: vi.fn().mockReturnValue({
+                  maybeSingle: vi.fn().mockResolvedValue({ data: { owner_id: 'other-owner' }, error: null }),
+                }),
+              }),
+            };
+          }
           return {
-            select: vi.fn().mockReturnValue({ maybeSingle: vi.fn().mockResolvedValue({ data: null }) }),
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                maybeSingle: vi.fn().mockResolvedValue({ data: null }),
+              }),
+              maybeSingle: vi.fn().mockResolvedValue({ data: null }),
+            }),
           };
         }),
       };

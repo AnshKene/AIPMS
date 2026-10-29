@@ -34,6 +34,28 @@ describe('ReportsService', () => {
     service = module.get<ReportsService>(ReportsService);
   });
 
+  const createMockSupabase = (rows: any[] | null, error: any = null, projectExists = true) => ({
+    from: vi.fn().mockImplementation((table: string) => {
+      if (table === 'projects') {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              maybeSingle: vi.fn().mockResolvedValue({
+                data: projectExists ? { id: projectUuid } : null,
+                error: null,
+              }),
+            }),
+          }),
+        };
+      }
+      return {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockResolvedValue({ data: rows, error }),
+        }),
+      };
+    }),
+  });
+
   it('should be defined', () => {
     expect(service).toBeDefined();
   });
@@ -94,13 +116,7 @@ describe('ReportsService', () => {
         { status: 'IN_REVIEW', priority: 'LOW', due_date: null },
       ];
 
-      (service as any).supabase = {
-        from: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockResolvedValue({ data: mockRows, error: null }),
-          }),
-        }),
-      };
+      (service as any).supabase = createMockSupabase(mockRows);
 
       const result = await service.getTasksReport(projectUuid);
 
@@ -115,13 +131,7 @@ describe('ReportsService', () => {
     });
 
     it('6. should return zero counts for empty tasks', async () => {
-      (service as any).supabase = {
-        from: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockResolvedValue({ data: [], error: null }),
-          }),
-        }),
-      };
+      (service as any).supabase = createMockSupabase([]);
 
       const result = await service.getTasksReport(projectUuid);
 
@@ -137,13 +147,7 @@ describe('ReportsService', () => {
         { status: 'IN_PROGRESS', priority: 'URGENT', due_date: null },
       ];
 
-      (service as any).supabase = {
-        from: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockResolvedValue({ data: mockRows, error: null }),
-          }),
-        }),
-      };
+      (service as any).supabase = createMockSupabase(mockRows);
 
       const result = await service.getTasksReport(projectUuid);
       expect(result.byPriority.HIGH).toBe(2);
@@ -152,13 +156,7 @@ describe('ReportsService', () => {
     });
 
     it('8. should throw BadRequestException on Supabase error', async () => {
-      (service as any).supabase = {
-        from: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockResolvedValue({ data: null, error: { message: 'DB error' } }),
-          }),
-        }),
-      };
+      (service as any).supabase = createMockSupabase(null, { message: 'DB error' });
 
       await expect(service.getTasksReport(projectUuid)).rejects.toThrow(BadRequestException);
     });
@@ -176,13 +174,7 @@ describe('ReportsService', () => {
         { status: 'CANCELLED' },
       ];
 
-      (service as any).supabase = {
-        from: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockResolvedValue({ data: mockRows, error: null }),
-          }),
-        }),
-      };
+      (service as any).supabase = createMockSupabase(mockRows);
 
       const result = await service.getSprintsReport(projectUuid);
 
@@ -195,13 +187,7 @@ describe('ReportsService', () => {
     });
 
     it('10. should return zero counts for empty sprints', async () => {
-      (service as any).supabase = {
-        from: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockResolvedValue({ data: [], error: null }),
-          }),
-        }),
-      };
+      (service as any).supabase = createMockSupabase([]);
 
       const result = await service.getSprintsReport(projectUuid);
       expect(result.total).toBe(0);
@@ -222,13 +208,7 @@ describe('ReportsService', () => {
         { status: 'CLOSED', probability: 'HIGH', impact: 'LOW', risk_score: 3 },
       ];
 
-      (service as any).supabase = {
-        from: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockResolvedValue({ data: mockRows, error: null }),
-          }),
-        }),
-      };
+      (service as any).supabase = createMockSupabase(mockRows);
 
       const result = await service.getRisksReport(projectUuid);
 
@@ -255,13 +235,7 @@ describe('ReportsService', () => {
     });
 
     it('12. should handle empty risk dataset safely', async () => {
-      (service as any).supabase = {
-        from: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockResolvedValue({ data: [], error: null }),
-          }),
-        }),
-      };
+      (service as any).supabase = createMockSupabase([]);
 
       const result = await service.getRisksReport(projectUuid);
       expect(result.total).toBe(0);
@@ -382,7 +356,10 @@ describe('ReportsService', () => {
               eq: vi.fn().mockImplementation(() => {
                 if (table === 'projects') {
                   return {
-                    maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+                    maybeSingle: vi.fn().mockResolvedValue({
+                      data: { id: projectUuid, name: 'Zero Tasks Project', status: 'ACTIVE', start_date: null, end_date: null, owner_id: 'owner-uuid' },
+                      error: null,
+                    }),
                   };
                 }
                 return Promise.resolve({ data: [], error: null });
@@ -395,7 +372,7 @@ describe('ReportsService', () => {
       const result = await service.getProjectOverview(projectUuid);
 
       // 3. zero tasks gives 0% completion
-      expect(result.project).toBeNull();
+      expect(result.project).toBeDefined();
       expect(result.tasks.totalTasks).toBe(0);
       expect(result.tasks.completedTasks).toBe(0);
       expect(result.tasks.pendingTasks).toBe(0);

@@ -78,4 +78,22 @@ test.describe('User Lifecycle Management & Admin Controls', () => {
       await expect(deleteBtn).toBeDisabled();
     }
   });
+
+  test('Global role badges and workspace ownership counts render correctly for system users', async ({ page }) => {
+    // Locate the row for admin.ansh@aipms.com
+    const adminRow = page.locator('tr, [role="row"]').filter({ hasText: 'admin.ansh@aipms.com' });
+    await expect(adminRow).toBeVisible();
+
+    // Verify system admin row displays designated admin indicator
+    await expect(adminRow.getByText(/System Owner|Admin/i).first()).toBeVisible();
+
+    // Verify workspace ownership column is rendered in table
+    const tableHeader = page.locator('th').filter({ hasText: /Workspaces Owned/i });
+    await expect(tableHeader).toBeVisible();
+
+    // Verify project owner rows show owned project counts where applicable
+    const projectCountCells = page.locator('td').filter({ hasText: /project/i });
+    await expect(projectCountCells.first()).toBeVisible();
+  });
 });
+

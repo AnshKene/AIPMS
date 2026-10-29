@@ -42,9 +42,9 @@ export const workspaceNavItems: NavItem[] = [
   { title: 'Projects', href: '/projects', icon: FolderKanban },
   { title: 'Tasks', href: '/tasks', icon: CheckSquare },
   { title: 'Sprints', href: '/sprints', icon: Zap },
-  { title: 'Teams', href: '/teams', icon: Users, roles: ['ADMIN', 'PROJECT_MANAGER', 'TEAM_MEMBER', 'VIEWER'] },
+  { title: 'Teams', href: '/teams', icon: Users, roles: ['ADMIN', 'PROJECT_OWNER', 'PROJECT_MANAGER', 'TEAM_MEMBER', 'VIEWER'] },
   { title: 'Risks', href: '/risks', icon: AlertTriangle },
-  { title: 'Reports', href: '/reports', icon: BarChart3, roles: ['ADMIN', 'PROJECT_MANAGER', 'TEAM_MEMBER', 'VIEWER'] },
+  { title: 'Reports', href: '/reports', icon: BarChart3, roles: ['ADMIN', 'PROJECT_OWNER', 'PROJECT_MANAGER', 'TEAM_MEMBER', 'VIEWER'] },
 ];
 
 export const adminNavItems: NavItem[] = [

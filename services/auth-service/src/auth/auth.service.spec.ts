@@ -1184,4 +1184,105 @@ describe('AuthService', () => {
       );
     });
   });
+
+  describe('Audit Verification: Global Roles, Demo Accounts & Ownership Distinctions', () => {
+    it('should default accounts to TEAM_MEMBER when app_metadata.role is missing and account is not in devUsers seed', async () => {
+      // Demonstrates why vyas@aipms.com and aryan@aipms.com displayed as MEMBER in UI:
+      // When authenticating with Supabase Auth without app_metadata.role, an unseeded ID defaults to TEAM_MEMBER
+      const unseededUserMock = vi.fn().mockResolvedValue({
+        data: {
+          user: {
+            id: '86a1b0c5-6785-46ad-8397-18c106c01402', // vyas@aipms.com
+            email: 'vyas@aipms.com',
+            user_metadata: { name: 'Vyas Thakre' },
+            app_metadata: {}, // Missing app_metadata.role
+            created_at: '2026-10-28T13:00:00.000Z',
+          },
+        },
+        error: null,
+      });
+
+      (service as any).supabase = {
+        auth: { getUser: unseededUserMock },
+      };
+
+      const result = await service.getCurrentUser('mock-token-unseeded');
+      expect(result.role).toBe(Role.TEAM_MEMBER);
+      expect(result.id).toBe('86a1b0c5-6785-46ad-8397-18c106c01402');
+    });
+
+    it('should resolve PROJECT_OWNER when app_metadata contains trusted role claim', async () => {
+      const ownerMock = vi.fn().mockResolvedValue({
+        data: {
+          user: {
+            id: '86a1b0c5-6785-46ad-8397-18c106c01402',
+            email: 'vyas@aipms.com',
+            user_metadata: { name: 'Vyas Thakre' },
+            app_metadata: { role: Role.PROJECT_OWNER }, // Authoritative claim
+            created_at: '2026-10-28T13:00:00.000Z',
+          },
+        },
+        error: null,
+      });
+
+      (service as any).supabase = {
+        auth: { getUser: ownerMock },
+      };
+
+      const result = await service.getCurrentUser('mock-token-owner');
+      expect(result.role).toBe(Role.PROJECT_OWNER);
+    });
+
+    it('should resolve PROJECT_MANAGER when app_metadata contains trusted role claim', async () => {
+      const pmMock = vi.fn().mockResolvedValue({
+        data: {
+          user: {
+            id: '351723e1-0e4d-41e8-ad4e-3b6363711359',
+            email: 'aryan@aipms.com',
+            user_metadata: { name: 'Aryan Radke' },
+            app_metadata: { role: Role.PROJECT_MANAGER }, // Authoritative claim
+            created_at: '2026-10-28T13:00:00.000Z',
+          },
+        },
+        error: null,
+      });
+
+      (service as any).supabase = {
+        auth: { getUser: pmMock },
+      };
+
+      const result = await service.getCurrentUser('mock-token-pm');
+      expect(result.role).toBe(Role.PROJECT_MANAGER);
+    });
+
+    it('should compute workspace ownership strictly by project ownerId, independent of project memberships', () => {
+      const vyasId = '86a1b0c5-6785-46ad-8397-18c106c01402';
+      const aryanId = '351723e1-0e4d-41e8-ad4e-3b6363711359';
+
+      const mockProjects = [
+        { id: 'p1', name: 'Customer CRM Portal', ownerId: vyasId },
+        { id: 'p2', name: 'AIPMS Platform Development', ownerId: vyasId },
+        { id: 'p3', name: 'E-Commerce Modernization', ownerId: vyasId },
+        { id: 'p4', name: 'Healthcare Appointment System', ownerId: '57bb7ac6-484f-40bd-a8ea-fd469e1e497a' },
+      ];
+
+      const mockMemberships = [
+        { projectId: 'p1', userId: aryanId, role: 'PROJECT_MANAGER' },
+        { projectId: 'p2', userId: aryanId, role: 'PROJECT_MANAGER' },
+        { projectId: 'p3', userId: aryanId, role: 'PROJECT_MANAGER' },
+      ];
+
+      // Ownership calculation mirrors frontend page.tsx getUserOwnedProjects
+      const vyasOwned = mockProjects.filter((p) => p.ownerId === vyasId);
+      const aryanOwned = mockProjects.filter((p) => p.ownerId === aryanId);
+
+      // Membership calculation (accessible projects)
+      const aryanAccessibleMemberships = mockMemberships.filter((m) => m.userId === aryanId);
+
+      expect(vyasOwned).toHaveLength(3);
+      expect(aryanOwned).toHaveLength(0); // Aryan owns 0 projects
+      expect(aryanAccessibleMemberships).toHaveLength(3); // But manages 3 projects at project level
+    });
+  });
 });
+

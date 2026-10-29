@@ -109,12 +109,33 @@ export class TeamsService {
     }
 
     const authUserId = userData.user.id;
-    const userRole = (
-      userData.user.app_metadata?.role ||
-      (userData.user as any).role ||
-      'TEAM_MEMBER'
-    ).toString();
     const userEmail = (userData.user.email ?? '').toLowerCase();
+
+    let userRole =
+      userData.user.app_metadata?.role ||
+      userData.user.user_metadata?.role;
+
+    const VALID_ROLES = ['ADMIN', 'PROJECT_OWNER', 'PROJECT_MANAGER', 'TEAM_MEMBER', 'VIEWER'];
+    if (!userRole || !VALID_ROLES.includes(userRole)) {
+      try {
+        const authServiceUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+        const res = await fetch(`${authServiceUrl}/api/auth/me`, {
+          headers: { Authorization: authHeader },
+        });
+        if (res.ok) {
+          const authData: any = await res.json();
+          if (authData?.role && VALID_ROLES.includes(authData.role)) {
+            userRole = authData.role;
+          }
+        }
+      } catch (err) {
+        this.logger.warn(`Could not verify role from auth-service: ${(err as Error).message}`);
+      }
+    }
+
+    if (!userRole || !VALID_ROLES.includes(userRole)) {
+      userRole = 'TEAM_MEMBER';
+    }
 
     const isDesignatedAdmin =
       (authUserId === DESIGNATED_ADMIN_ID && userEmail === DESIGNATED_ADMIN_EMAIL) ||
@@ -124,9 +145,11 @@ export class TeamsService {
           authUserId === 'usr-123' ||
           (authUserId === DESIGNATED_ADMIN_ID && userRole === 'ADMIN')));
 
+    const finalRole = isDesignatedAdmin ? 'ADMIN' : userRole;
+
     return {
       id: authUserId,
-      role: userRole,
+      role: finalRole,
       email: userEmail,
       isAdmin: isDesignatedAdmin,
     };

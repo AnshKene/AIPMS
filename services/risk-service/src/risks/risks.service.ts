@@ -98,12 +98,33 @@ export class RisksService {
           throw new UnauthorizedException('Invalid or expired authentication token');
         }
         const user = data.user;
-        const role = (
-          user.app_metadata?.role ||
-          (user as any).role ||
-          'TEAM_MEMBER'
-        ).toString();
         const email = (user.email ?? '').toLowerCase();
+        let role =
+          user.app_metadata?.role ||
+          user.user_metadata?.role;
+
+        const VALID_ROLES = ['ADMIN', 'PROJECT_OWNER', 'PROJECT_MANAGER', 'TEAM_MEMBER', 'VIEWER'];
+        if (!role || !VALID_ROLES.includes(role)) {
+          try {
+            const authServiceUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+            const res = await fetch(`${authServiceUrl}/api/auth/me`, {
+              headers: { Authorization: authHeader },
+            });
+            if (res.ok) {
+              const authData: any = await res.json();
+              if (authData?.role && VALID_ROLES.includes(authData.role)) {
+                role = authData.role;
+              }
+            }
+          } catch (err) {
+            this.logger.warn(`Could not verify role from auth-service: ${(err as Error).message}`);
+          }
+        }
+
+        if (!role || !VALID_ROLES.includes(role)) {
+          role = 'TEAM_MEMBER';
+        }
+
         const isDesignatedAdmin =
           (user.id === DESIGNATED_ADMIN_ID && email === DESIGNATED_ADMIN_EMAIL) ||
           (process.env.NODE_ENV !== 'production' &&
@@ -112,9 +133,11 @@ export class RisksService {
               user.id === 'usr-123' ||
               (user.id === DESIGNATED_ADMIN_ID && role === 'ADMIN')));
 
+        const finalRole = isDesignatedAdmin ? 'ADMIN' : role;
+
         return {
           id: user.id,
-          role,
+          role: finalRole,
           email,
           isAdmin: isDesignatedAdmin,
         };

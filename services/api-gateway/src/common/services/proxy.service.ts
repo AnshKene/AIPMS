@@ -27,6 +27,12 @@ export class ProxyService {
     if (req.headers['x-correlation-id']) {
       headers['x-correlation-id'] = req.headers['x-correlation-id'] as string;
     }
+    const user = (req as any).user;
+    if (user) {
+      if (user.id) headers['x-user-id'] = String(user.id);
+      if (user.role) headers['x-user-role'] = String(user.role);
+      if (user.email) headers['x-user-email'] = String(user.email);
+    }
     headers['connection'] = 'keep-alive';
     if (req.headers['content-type']) {
       headers['content-type'] = req.headers['content-type'] as string;

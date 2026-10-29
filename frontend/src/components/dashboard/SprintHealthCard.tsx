@@ -18,15 +18,50 @@ export function SprintHealthCard({
   offTrack = 0,
   notStarted = 0,
 }: SprintHealthCardProps) {
-  const total = onTrack + atRisk + offTrack + notStarted;
-  const activeTotal = onTrack + atRisk;
-  const percentage = activeTotal > 0 ? Math.round((onTrack / activeTotal) * 100) : total > 0 ? Math.round((onTrack / total) * 100) : 100;
+  const activeTotal = onTrack + atRisk + offTrack;
+  const total = activeTotal + notStarted;
+
+  // Calculate on-track rate among active iterations
+  const onTrackPercentage = activeTotal > 0 ? Math.round((onTrack / activeTotal) * 100) : 100;
+
+  // Weighted operational health score
+  const healthScore = activeTotal > 0
+    ? Math.round(((onTrack * 100) + (atRisk * 65) + (offTrack * 20)) / activeTotal)
+    : 100;
 
   // Arc stroke dash calculations
   const circumference = 238;
-  const onTrackDash = total > 0 ? Math.round((onTrack / total) * circumference) : 0;
-  const atRiskDash = total > 0 ? Math.round((atRisk / total) * circumference) : 0;
-  const offTrackDash = total > 0 ? Math.round((offTrack / total) * circumference) : 0;
+  const denominator = total > 0 ? total : 1;
+  const onTrackDash = Math.round((onTrack / denominator) * circumference);
+  const atRiskDash = Math.round((atRisk / denominator) * circumference);
+  const offTrackDash = Math.round((offTrack / denominator) * circumference);
+
+  // Determine dynamic health status text & accent color
+  let displayPercentage = onTrackPercentage;
+  let statusLabel = 'On Track';
+  let statusColor = 'text-slate-900 dark:text-slate-100';
+  let badgeColor = 'text-slate-400 dark:text-slate-500';
+
+  if (activeTotal === 0) {
+    displayPercentage = total > 0 ? 100 : 0;
+    statusLabel = total > 0 ? 'Planned' : 'All Clear';
+    badgeColor = 'text-slate-400 dark:text-slate-500';
+  } else if (onTrack > 0) {
+    displayPercentage = onTrackPercentage;
+    statusLabel = 'On Track';
+    badgeColor = onTrackPercentage >= 65 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400';
+  } else if (atRisk > 0 && offTrack === 0) {
+    // Graceful handling of zero on-track: show health index rather than alarming 0%
+    displayPercentage = healthScore;
+    statusLabel = 'At Risk';
+    statusColor = 'text-amber-600 dark:text-amber-400';
+    badgeColor = 'text-amber-600 dark:text-amber-400';
+  } else {
+    displayPercentage = healthScore;
+    statusLabel = 'Attention';
+    statusColor = 'text-rose-600 dark:text-rose-400';
+    badgeColor = 'text-rose-600 dark:text-rose-400';
+  }
 
   return (
     <Card className="p-5 border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs hover:shadow-xs transition-shadow">
@@ -114,11 +149,11 @@ export function SprintHealthCard({
 
           {/* Center Text */}
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-            <span className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight">
-              {percentage}%
+            <span className={`text-2xl font-black tracking-tight ${statusColor}`}>
+              {displayPercentage}%
             </span>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-              On Track
+            <span className={`text-[10px] font-bold uppercase tracking-wider ${badgeColor}`}>
+              {statusLabel}
             </span>
           </div>
         </div>

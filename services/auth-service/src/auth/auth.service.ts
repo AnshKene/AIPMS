@@ -97,17 +97,58 @@ export class AuthService {
   }
 
   private seedDesignatedAdminOnly() {
-    const admin: UserRecord = {
-      id: AuthService.DESIGNATED_ADMIN_ID,
-      email: AuthService.DESIGNATED_ADMIN_EMAIL,
-      name: 'Ansh (Designated Admin)',
-      role: Role.ADMIN,
-      status: 'ACTIVE',
-      deactivatedAt: null,
-      createdAt: '2026-09-25T00:00:00.000Z',
-    };
-    this.usersMap.set(admin.id, admin);
-    this.usersMap.set(admin.email.toLowerCase(), admin);
+    const devUsers: UserRecord[] = [
+      {
+        id: AuthService.DESIGNATED_ADMIN_ID,
+        email: AuthService.DESIGNATED_ADMIN_EMAIL,
+        name: 'Ansh (System Admin)',
+        role: Role.ADMIN,
+        status: 'ACTIVE',
+        deactivatedAt: null,
+        createdAt: '2026-09-25T00:00:00.000Z',
+      },
+      {
+        id: '57bb7ac6-484f-40bd-a8ea-fd469e1e497a',
+        email: 'vyas.thakre@aipms.com',
+        name: 'Vyas Thakre',
+        role: Role.PROJECT_OWNER,
+        status: 'ACTIVE',
+        deactivatedAt: null,
+        createdAt: '2026-10-28T13:18:21.070818Z',
+      },
+      {
+        id: '0e982b72-ba61-449b-a9e1-1d455b908069',
+        email: 'aryan.radke@aipms.com',
+        name: 'Aryan Radke',
+        role: Role.PROJECT_MANAGER,
+        status: 'ACTIVE',
+        deactivatedAt: null,
+        createdAt: '2026-10-28T13:51:45.102865Z',
+      },
+      {
+        id: 'd82cc5d0-55e2-4717-9853-597d69649c05',
+        email: 'akash@aipms.com',
+        name: 'Akash',
+        role: Role.TEAM_MEMBER,
+        status: 'ACTIVE',
+        deactivatedAt: null,
+        createdAt: '2026-10-28T13:00:00.000Z',
+      },
+      {
+        id: 'b1b7da8e-2564-487f-b4d5-03f90c71dedf',
+        email: 'sonali@aipms.com',
+        name: 'Sonali',
+        role: Role.VIEWER,
+        status: 'ACTIVE',
+        deactivatedAt: null,
+        createdAt: '2026-10-28T13:00:00.000Z',
+      },
+    ];
+
+    for (const u of devUsers) {
+      this.usersMap.set(u.id, u);
+      this.usersMap.set(u.email.toLowerCase(), u);
+    }
   }
 
   private seedInitialUsers() {
@@ -317,6 +358,23 @@ export class AuthService {
     };
 
     this.usersMap.set(userRecord.id, userRecord);
+
+    // Synchronize role to Supabase Auth user_metadata so downstream tokens include role claim
+    if (data.session?.access_token && data.user.user_metadata?.role !== assignedRole) {
+      try {
+        const userClient = createClient(this.supabaseUrl, this.supabaseAnonKey, {
+          global: {
+            headers: { Authorization: `Bearer ${data.session.access_token}` },
+          },
+          auth: { autoRefreshToken: false, persistSession: false },
+        });
+        await userClient.auth.updateUser({
+          data: { role: assignedRole },
+        });
+      } catch (err) {
+        this.logger.warn(`Could not sync user_metadata role on login: ${(err as Error).message}`);
+      }
+    }
 
     return {
       accessToken: data.session.access_token,
