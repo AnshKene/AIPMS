@@ -1,3 +1,4 @@
+
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -55,15 +56,41 @@ async function bootstrap() {
 
   // CORS Configuration
   const corsOriginEnv = configService.get<string>('CORS_ORIGIN');
-  const allowedOrigins = corsOriginEnv
-    ? corsOriginEnv.split(',').map((origin) => origin.trim())
-    : ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3008'];
+
+  const allowedOrigins = (
+    corsOriginEnv ||
+    'http://localhost:3000,http://localhost:3001,http://localhost:3008'
+  )
+    .split(',')
+    .map((origin) => origin.trim().replace(/\/$/, ''))
+    .filter(Boolean);
+
+  // CORS Configuration Logging
+  logger.log(`CORS_ORIGIN: ${corsOriginEnv || 'NOT SET'}`);
+  logger.log(`Allowed Origins: ${JSON.stringify(allowedOrigins)}`);
 
   app.enableCors({
     origin: allowedOrigins,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Correlation-ID', 'X-Request-ID'],
-    exposedHeaders: ['X-Correlation-ID', 'X-Response-Time'],
+    methods: [
+      'GET',
+      'HEAD',
+      'POST',
+      'PUT',
+      'PATCH',
+      'DELETE',
+      'OPTIONS',
+    ],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Correlation-ID',
+      'X-Request-ID',
+    ],
+    exposedHeaders: [
+      'X-Correlation-ID',
+      'X-Response-Time',
+    ],
+    optionsSuccessStatus: 204,
   });
 
   // Swagger Documentation Setup
